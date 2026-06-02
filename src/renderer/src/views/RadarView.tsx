@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Star, Trash2, X } from 'lucide-react'
+import { Check, RotateCcw, Star, Trash2, X } from 'lucide-react'
 import type { Task } from '@shared/types'
 import { TaskDetail } from '../components/TaskDetail'
 import { isOverdue } from '../lib/date'
 import {
-  blipAngle,
+  angleFromPoint,
   blipRadiusFrac,
   daysFromFrac,
   dragPreviewLabel,
+  layoutBlipAngles,
   PRIO_SIZE,
   radiusFracForDays,
   relativeDue,
@@ -47,7 +48,7 @@ export function RadarView(): JSX.Element {
   const tasks = useStore((s) => s.tasks)
   const projects = useStore((s) => s.projects)
   const selectedId = useStore((s) => s.radarSelectedId)
-  const { setRadarSelected, setDue } = useStore.getState()
+  const { setRadarSelected, patchTask, resetRadarLayout } = useStore.getState()
 
   const [hudId, setHudId] = useState<string | null>(null)
 
@@ -273,13 +274,23 @@ export function RadarView(): JSX.Element {
         ctx!.fillText(ring.label, x, y)
       }
 
-      // blips
+      // blips — resolve every angle first: manual overrides + crowd-aware fanning
+      // so same-project/same-deadline tasks don't stack on one spoke.
+      const wedgeSpacing = 360 / Math.max(sectorByKey.size, 1)
+      const angleById = layoutBlipAngles(
+        contacts.map((t) => ({
+          id: t.id,
+          frac: blipRadiusFrac(t, ref),
+          base: sectorByKey.get(t.projectId ?? 'inbox') ?? 0,
+          size: PRIO_SIZE[t.priority],
+          override: t.radarAngle ?? null
+        })),
+        { R, wedgeSpacing }
+      )
       const positions = new Map<string, { x: number; y: number; r: number }>()
       const drag = dragRef.current
       for (const task of contacts) {
-        const key = task.projectId ?? 'inbox'
-        const base = sectorByKey.get(key) ?? 0
-        const angle = blipAngle(task, base)
+        const angle = angleById.get(task.id) ?? 0
         const dragging = !!drag && drag.id === task.id && drag.moved && mouseRef.current.inside
         let x: number
         let y: number
@@ -418,6 +429,7 @@ export function RadarView(): JSX.Element {
   }
 
   const hud = hudId ? contacts.find((t) => t.id === hudId) : undefined
+  const hasPinned = contacts.some((t) => t.radarAngle != null)
 
   return (
     <main className="relative flex h-full flex-1 overflow-hidden bg-bg">
@@ -429,9 +441,17 @@ export function RadarView(): JSX.Element {
               Radar
             </h1>
             <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
-              <span className="led-dot" /> {contacts.length} contacts · distance = time to deadline ·
-              drag to reschedule
+              <span className="led-dot" /> {contacts.length} contacts · distance = deadline · drag to
+              place · right-click resets
             </div>
+            {hasPinned && (
+              <button
+                onClick={() => resetRadarLayout()}
+                className="no-drag pointer-events-auto mt-1.5 inline-flex items-center gap-1 border border-rule px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint transition-colors hover:border-phosphor hover:text-phosphor"
+              >
+                <RotateCcw size={10} /> reset layout
+              </button>
+            )}
           </div>
           <div className="flex flex-col items-end gap-1 font-mono text-[10px] uppercase tracking-[0.12em]">
             {TIME_RINGS.map((ring) => (
@@ -485,8 +505,25 @@ export function RadarView(): JSX.Element {
             const { x, y } = toCanvas(e)
             const { cx, cy, R } = geomRef.current
             if (R <= 0) return
-            const frac = Math.hypot(x - cx, y - cy) / R
-            setDue(drag.id, dueForFrac(frac, task))
+            const dx = x - cx
+            const dy = y - cy
+            const frac = Math.hypot(dx, dy) / R
+            const nextDue = dueForFrac(frac, task)
+            // Drop sets both axes: angle (pinned, visual) + due (radius). Only patch
+            // the due when the radius actually moved it, so a pure angular nudge
+            // doesn't log a phantom "rescheduled" on the activity timeline.
+            const patch: Partial<Task> = { radarAngle: angleFromPoint(dx, dy) }
+            if ((nextDue?.date ?? null) !== (task.due?.date ?? null)) patch.due = nextDue
+            patchTask(drag.id, patch)
+          }}
+          onContextMenu={(e) => {
+            // Right-click a repositioned blip → clear its manual angle (re-join the
+            // auto layout). Always suppress the native menu over the canvas.
+            e.preventDefault()
+            const { x, y } = toCanvas(e)
+            const id = hitTest(x, y)
+            const task = id ? tasks.find((t) => t.id === id) : undefined
+            if (task?.radarAngle != null) patchTask(task.id, { radarAngle: undefined })
           }}
           onMouseLeave={() => {
             mouseRef.current.inside = false
@@ -521,7 +558,8 @@ export function RadarView(): JSX.Element {
 }
 
 function ContactHeader({ task }: { task: Task }): JSX.Element {
-  const { toggleComplete, toggleStar, deleteTask, setRadarSelected } = useStore.getState()
+  const { toggleComplete, toggleStar, deleteTask, setRadarSelected, setRadarAngle } =
+    useStore.getState()
   return (
     <header className="border-b border-rule px-3 py-3">
       <div className="flex items-start gap-2">
@@ -541,6 +579,14 @@ function ContactHeader({ task }: { task: Task }): JSX.Element {
           <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
             {relativeDue(task)}
           </div>
+          {task.radarAngle != null && (
+            <button
+              onClick={() => setRadarAngle(task.id, undefined)}
+              className="mt-1.5 inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.12em] text-faint transition-colors hover:text-phosphor"
+            >
+              <RotateCcw size={9} /> pinned · reset position
+            </button>
+          )}
         </div>
         <button
           onClick={() => toggleStar(task.id)}

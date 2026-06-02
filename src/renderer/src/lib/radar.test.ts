@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Task } from '@shared/types'
 import {
+  angleFromPoint,
   blipAngle,
+  type BlipLayoutInput,
   daysFromFrac,
   daysUntilDue,
   hash01,
+  layoutBlipAngles,
   radiusFracForDays,
   relativeDue,
   R_SOMEDAY,
@@ -124,6 +127,12 @@ describe('blip helpers (unchanged)', () => {
     expect(a).toBeLessThan(360)
   })
 
+  it('blipAngle honors a manual radarAngle override (wrapped), ignoring the sector', () => {
+    expect(blipAngle(makeTask({ radarAngle: 123 }), 90)).toBe(123)
+    expect(blipAngle(makeTask({ radarAngle: 400 }), 90)).toBe(40)
+    expect(blipAngle(makeTask({ radarAngle: -10 }), 90)).toBe(350)
+  })
+
   it('sectorBase spreads sectors around the dial', () => {
     expect(sectorBase(0, 4)).toBe(18)
     expect(sectorBase(2, 4)).toBe(198)
@@ -141,5 +150,94 @@ describe('blip helpers (unchanged)', () => {
         })
       )
     ).toBe(0.5)
+  })
+})
+
+describe('angleFromPoint — drop bearing', () => {
+  it('maps the cardinal directions (clockwise from straight up)', () => {
+    expect(angleFromPoint(0, -1)).toBeCloseTo(0, 6) // up / north
+    expect(angleFromPoint(1, 0)).toBeCloseTo(90, 6) // right / east
+    expect(angleFromPoint(0, 1)).toBeCloseTo(180, 6) // down / south
+    expect(angleFromPoint(-1, 0)).toBeCloseTo(270, 6) // left / west
+  })
+
+  it('inverts the canvas pt() bearing for arbitrary angles', () => {
+    for (const b of [12, 47, 198, 350]) {
+      const a = (b * Math.PI) / 180
+      expect(angleFromPoint(Math.sin(a), -Math.cos(a))).toBeCloseTo(b, 6)
+    }
+  })
+})
+
+describe('layoutBlipAngles — crowd-aware fanning', () => {
+  const input = (
+    over: Partial<BlipLayoutInput> & Pick<BlipLayoutInput, 'id'>
+  ): BlipLayoutInput => ({ frac: 0.1, base: 90, size: 5, override: null, ...over })
+  const OPTS = { R: 300, wedgeSpacing: 90 }
+
+  it('returns nothing for no blips, and one in-range angle per blip otherwise', () => {
+    expect(layoutBlipAngles([], OPTS).size).toBe(0)
+    const m = layoutBlipAngles([input({ id: 'a' }), input({ id: 'b', frac: 0.6 })], OPTS)
+    expect(m.size).toBe(2)
+    for (const v of m.values()) {
+      expect(v).toBeGreaterThanOrEqual(0)
+      expect(v).toBeLessThan(360)
+    }
+  })
+
+  it('honors manual overrides verbatim (wrapped)', () => {
+    const m = layoutBlipAngles(
+      [input({ id: 'a', override: 200 }), input({ id: 'b', override: -10 })],
+      OPTS
+    )
+    expect(m.get('a')).toBe(200)
+    expect(m.get('b')).toBe(350)
+  })
+
+  it('keeps a lone blip within a small wobble of its wedge', () => {
+    expect(Math.abs(layoutBlipAngles([input({ id: 'a' })], OPTS).get('a')! - 90)).toBeLessThanOrEqual(8)
+  })
+
+  it('fans an overlapping same-wedge cluster apart — distinct, centered, inside the wedge', () => {
+    const ids = ['a', 'b', 'c', 'd']
+    const m = layoutBlipAngles(ids.map((id) => input({ id })), OPTS)
+    const angles = ids.map((id) => m.get(id)!).sort((x, y) => x - y)
+    expect(new Set(angles).size).toBe(4)
+    const mean = angles.reduce((s, v) => s + v, 0) / angles.length
+    expect(mean).toBeCloseTo(90, 4)
+    expect(angles[3] - angles[0]).toBeLessThanOrEqual(90 * 0.72 + 1e-6)
+  })
+
+  it('does not fan blips that are already far apart radially', () => {
+    const m = layoutBlipAngles(
+      [input({ id: 'a', frac: 0.1 }), input({ id: 'b', frac: 0.85 })],
+      OPTS
+    )
+    expect(Math.abs(m.get('a')! - 90)).toBeLessThanOrEqual(8)
+    expect(Math.abs(m.get('b')! - 90)).toBeLessThanOrEqual(8)
+  })
+
+  it('opens a wider arc for clusters nearer the crowded center', () => {
+    const wide = { R: 300, wedgeSpacing: 3600 } // huge wedge → fan never capped
+    const inner = layoutBlipAngles(
+      [input({ id: 'a', frac: 0.05 }), input({ id: 'b', frac: 0.05 })],
+      wide
+    )
+    const outer = layoutBlipAngles(
+      [input({ id: 'a', frac: 0.6 }), input({ id: 'b', frac: 0.6 })],
+      wide
+    )
+    expect(Math.abs(inner.get('a')! - inner.get('b')!)).toBeGreaterThan(
+      Math.abs(outer.get('a')! - outer.get('b')!)
+    )
+  })
+
+  it('lets a manual override escape its cluster while siblings still fan', () => {
+    const m = layoutBlipAngles(
+      [input({ id: 'a' }), input({ id: 'b' }), input({ id: 'c', override: 250 })],
+      OPTS
+    )
+    expect(m.get('c')).toBe(250)
+    expect(m.get('a')).not.toBe(m.get('b'))
   })
 })

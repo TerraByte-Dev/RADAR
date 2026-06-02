@@ -54,6 +54,13 @@ export interface Task {
   starred: boolean
   /** ISO; while in the future, the task is hidden from the action views. */
   snoozedUntil?: string
+  /**
+   * Manual radar angle override in degrees [0, 360) — purely visual. When set,
+   * the blip stays at this angle instead of its auto project-sector position
+   * (set by dragging it around the dial; cleared to re-join the auto layout).
+   * Does NOT change the task's project.
+   */
+  radarAngle?: number
 }
 
 export interface Project {

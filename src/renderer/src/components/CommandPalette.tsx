@@ -9,6 +9,7 @@ import {
   Moon,
   Plus,
   Radar,
+  RotateCcw,
   ScrollText,
   Sun
 } from 'lucide-react'
@@ -29,7 +30,7 @@ export function CommandPalette(): JSX.Element {
   const projects = useStore((s) => s.projects)
   const crt = useStore((s) => s.crtEffects)
   const showCompleted = useStore((s) => s.showCompleted)
-  const { setPaletteOpen, setView, setQuickAddOpen, toggleCrt, toggleShowCompleted } =
+  const { setPaletteOpen, setView, setQuickAddOpen, toggleCrt, toggleShowCompleted, resetRadarLayout } =
     useStore.getState()
 
   const go = (view: View): void => {
@@ -79,6 +80,13 @@ export function CommandPalette(): JSX.Element {
             onSelect={() => run(toggleShowCompleted)}
           >
             <Eye size={16} /> Completed in list: {showCompleted ? 'shown' : 'hidden'}
+          </Command.Item>
+          <Command.Item
+            value="reset radar layout blip positions angles"
+            className={itemCls}
+            onSelect={() => run(resetRadarLayout)}
+          >
+            <RotateCcw size={16} /> Reset radar layout
           </Command.Item>
         </Command.Group>
 
