@@ -1,0 +1,1 @@
+By the way; I just had a thought -- I use TerraPlayer (my custom offline music player) as a productivity tool as well; when we get this polished I honestly would like to append it to that app; or at least experiment to see if it works together... It would be nice to have an all in one hub for productivty/media.  Just a thought for now

@@ -1,0 +1,15 @@
+appId: com.terrabyte.todoplus
+productName: ToDoPlus
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+  - package.json
+win:
+  icon: build/icon.png
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
