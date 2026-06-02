@@ -86,6 +86,10 @@ interface StoreState {
 
   // Radar
   setRadarSelected(id: string | null): void
+  /** Pin (or clear, with undefined) a blip's manual radar angle — visual only. */
+  setRadarAngle(id: string, angle: number | undefined): Promise<void>
+  /** Clear every manual radar angle so all blips re-join the auto layout. */
+  resetRadarLayout(): Promise<void>
 
   // Calendar navigation
   calendarPrevMonth(): void
@@ -158,6 +162,12 @@ export const useStore = create<StoreState>((set, get) => ({
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
 
   setRadarSelected: (radarSelectedId) => set({ radarSelectedId }),
+
+  setRadarAngle: (id, angle) => get().patchTask(id, { radarAngle: angle }),
+  async resetRadarLayout() {
+    const pinned = get().tasks.filter((t) => t.radarAngle != null)
+    await Promise.all(pinned.map((t) => get().patchTask(t.id, { radarAngle: undefined })))
+  },
 
   calendarPrevMonth: () => set((s) => ({ calendarMonth: addMonths(s.calendarMonth, -1) })),
   calendarNextMonth: () => set((s) => ({ calendarMonth: addMonths(s.calendarMonth, 1) })),

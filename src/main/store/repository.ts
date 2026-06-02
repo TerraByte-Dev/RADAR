@@ -24,7 +24,12 @@ function normalizeTask(t: Task): Task {
   const starred = t.starred ?? false
   const existing = Array.isArray(t.activity) ? t.activity : []
   const seeded = existing.length ? existing : [activity('created', undefined, t.createdAt)]
-  return { ...t, subtasks, starred, activity: seeded }
+  // Keep any manual radar angle as a clean number in [0, 360); drop bad values.
+  const radarAngle =
+    typeof t.radarAngle === 'number' && Number.isFinite(t.radarAngle)
+      ? ((t.radarAngle % 360) + 360) % 360
+      : undefined
+  return { ...t, subtasks, starred, activity: seeded, radarAngle }
 }
 
 /**

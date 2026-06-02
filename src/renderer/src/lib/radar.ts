@@ -116,12 +116,135 @@ export function hash01(s: string): number {
 
 const mod360 = (n: number): number => ((n % 360) + 360) % 360
 
+/** Organic per-blip wobble (deg) so lone auto-placed blips don't sit dead on a spoke. */
+const SINGLE_JITTER_DEG = 16
+/** Stable, bounded angular wobble for a blip with no manual override. */
+function jitterForId(id: string): number {
+  return (hash01(id) - 0.5) * SINGLE_JITTER_DEG
+}
+
 /**
- * A blip's angle: clustered around its project's sector, jittered stably by id so
- * tasks in the same project (and at the same deadline) fan out without overlapping.
+ * A blip's *auto* angle: clustered around its project's sector and jittered stably
+ * by id — unless the task carries a manual `radarAngle` override (set by dragging
+ * it around the dial), which is honored verbatim. The crowd-aware fanning that
+ * keeps same-project/same-deadline blips from stacking lives in `layoutBlipAngles`.
  */
 export function blipAngle(task: Task, sectorBase: number): number {
-  return mod360(sectorBase + (hash01(task.id) - 0.5) * 42)
+  if (task.radarAngle != null) return mod360(task.radarAngle)
+  return mod360(sectorBase + jitterForId(task.id))
+}
+
+/**
+ * Inverse of the canvas `pt()` bearing: a screen-space delta from the radar center
+ * (dx right, dy down) → compass bearing in degrees [0, 360), measured clockwise
+ * from straight up. Used to read the angle where a dragged blip is dropped.
+ */
+export function angleFromPoint(dx: number, dy: number): number {
+  return mod360((Math.atan2(dx, -dy) * 180) / Math.PI)
+}
+
+/* ── Crowd-aware angular layout ──────────────────────────────────────
+   Same-project tasks share a wedge; at the same deadline they'd stack on
+   one spoke. layoutBlipAngles fans each wedge's blips apart *only where*
+   they'd actually overlap radially, widening the arc near the crowded
+   center (small circumference → more degrees per pixel) and capping the
+   spread so adjacent wedges never collide. Manual overrides win outright. */
+
+/** One blip's inputs to the angular layout pass. */
+export interface BlipLayoutInput {
+  id: string
+  /** Radial position [0..1] (from blipRadiusFrac). */
+  frac: number
+  /** Home wedge base angle in degrees (project sector). */
+  base: number
+  /** Blip draw radius in px (priority size) — drives collision spacing. */
+  size: number
+  /** Manual angle override in degrees, or null for auto layout. */
+  override: number | null
+}
+
+export interface RadarLayoutOpts {
+  /** Radar radius in px (frac × R = pixel radius). */
+  R: number
+  /** Angular gap between adjacent project wedges (deg) — bounds each fan. */
+  wedgeSpacing: number
+}
+
+/** Fraction of a wedge a fanned cluster may span (keeps neighbors clear). */
+const FAN_SPAN_FRAC = 0.72
+/** Extra px before two radially-near blips count as separate clusters. */
+const CLUSTER_PAD_PX = 3
+/** Extra px of arc inserted between fanned blips (beyond their radii). */
+const FAN_GAP_PAD_PX = 4
+/** Floor on a cluster's pixel radius so dead-center fans stay finite. */
+const MIN_FAN_RADIUS_PX = 14
+
+function placeCluster(
+  cluster: BlipLayoutInput[],
+  base: number,
+  maxSpan: number,
+  R: number,
+  out: Map<string, number>
+): void {
+  const m = cluster.length
+  if (m === 1) {
+    const b = cluster[0]
+    out.set(b.id, mod360(base + jitterForId(b.id)))
+    return
+  }
+  // Size the gap off the innermost (smallest-radius) blip — the tightest spot.
+  const radiusPx = Math.max(cluster[0].frac * R, MIN_FAN_RADIUS_PX)
+  const avgSize = cluster.reduce((s, b) => s + b.size, 0) / m
+  const neededGapDeg = ((avgSize * 2 + FAN_GAP_PAD_PX) / radiusPx) * (180 / Math.PI)
+  const gap = maxSpan > 0 ? Math.min(neededGapDeg, maxSpan / (m - 1)) : neededGapDeg
+  const span = gap * (m - 1)
+  cluster.forEach((b, k) => out.set(b.id, mod360(base - span / 2 + k * gap)))
+}
+
+/**
+ * Resolve every blip's angle for one frame: overrides verbatim, the rest clustered
+ * by wedge and fanned apart where they'd overlap. Pure + deterministic (stable id
+ * tiebreak) so the radar can recompute it each frame without the layout twitching.
+ */
+export function layoutBlipAngles(
+  blips: BlipLayoutInput[],
+  opts: RadarLayoutOpts
+): Map<string, number> {
+  const { R, wedgeSpacing } = opts
+  const out = new Map<string, number>()
+  const maxSpan = Math.max(0, wedgeSpacing * FAN_SPAN_FRAC)
+
+  // Park overrides immediately; group the auto blips by their home wedge.
+  const wedges = new Map<number, BlipLayoutInput[]>()
+  for (const b of blips) {
+    if (b.override != null) {
+      out.set(b.id, mod360(b.override))
+      continue
+    }
+    const arr = wedges.get(b.base)
+    if (arr) arr.push(b)
+    else wedges.set(b.base, [b])
+  }
+
+  for (const [base, members] of wedges) {
+    // Inward→outward; id breaks ties so the order is stable frame-to-frame.
+    members.sort((a, b) => a.frac - b.frac || (a.id < b.id ? -1 : 1))
+    // Walk the wedge, grouping runs that would overlap if left on one spoke.
+    let i = 0
+    while (i < members.length) {
+      let j = i + 1
+      while (
+        j < members.length &&
+        (members[j].frac - members[j - 1].frac) * R <
+          members[j].size + members[j - 1].size + CLUSTER_PAD_PX
+      ) {
+        j++
+      }
+      placeCluster(members.slice(i, j), base, maxSpan, R, out)
+      i = j
+    }
+  }
+  return out
 }
 
 /** Subtask completion ratio (0..1) — drives the progress arc around a blip. */

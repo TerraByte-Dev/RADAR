@@ -14,8 +14,11 @@ skin. Feature-complete and green on all gates.
 - **Radar** *(default view, the flagship)* — canvas radar; a blip's **distance from center = its real
   time-to-deadline** on a continuous log-compressed scale (NOW · 1 WEEK · 1 MONTH · 1 QUARTER rings +
   outer SOMEDAY band). Rotating sweep, pings, subtask progress arcs, priority-sized blips, overdue in
-  red at the bullseye. **Drag a blip to reschedule to the exact date** under the cursor (live `+12D`
-  preview). `lib/radar.ts` (pure math, unit-tested) + `views/RadarView.tsx`.
+  red at the bullseye. **Drag a blip anywhere**: the radius reschedules it to the exact date under the
+  cursor (live `+12D` preview) and the angle is **pinned** as a per-task `radarAngle` (visual only,
+  doesn't change the project). Same-project/same-deadline blips **auto-fan** so they never stack;
+  right-click (or the panel / header / palette "reset") clears a pinned angle. `lib/radar.ts` (pure
+  math, unit-tested) + `views/RadarView.tsx`.
 - **Today** — merged Today+Upcoming: dated tasks, overdue/today bright, future faded under a
   `▾ horizon` divider.
 - **Calendar** — month grid, day panel, drag-to-reschedule, inline add.
@@ -31,7 +34,7 @@ skin. Feature-complete and green on all gates.
 
 ## State of play
 
-- **Gates green:** `npm run typecheck` ✓ · `npm test` (49 tests) ✓ · `npm run build` ✓.
+- **Gates green:** `npm run typecheck` ✓ · `npm test` (59 tests) ✓ · `npm run build` ✓.
 - **Git:** private repo `TerraByte-Dev/ToDoPlus`, branch `main`. git user is configured locally
   (TerraByte-Dev / terrabytedeveloper@gmail.com).
 - **Related:** `TerraByte-Dev/TerraDeck` (private) is a history-preserving copy of TerraPlayer where
