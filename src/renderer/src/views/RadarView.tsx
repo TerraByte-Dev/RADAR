@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, RotateCcw, Star, Trash2, X } from 'lucide-react'
 import type { Task } from '@shared/types'
 import { TaskDetail } from '../components/TaskDetail'
-import { isOverdue } from '../lib/date'
+import { daysFromToday, isOverdue } from '../lib/date'
 import {
   angleFromPoint,
+  blipLayoutFrac,
   blipRadiusFrac,
   daysFromFrac,
   dragPreviewLabel,
@@ -22,6 +23,8 @@ import { useStore } from '../store/useStore'
 
 const ACCENT = '#00FF88'
 const PING_MS = 950
+/** Below this drop radius (px) the angle is meaningless, so we un-pin instead of pinning garbage. */
+const MIN_PIN_PX = 8
 
 function hexA(hex: string, a: number): string {
   if (!hex.startsWith('#') || hex.length < 7) return hex
@@ -70,6 +73,8 @@ export function RadarView(): JSX.Element {
   stateRef.current = { contacts, projectById, sectorByKey, selectedId, hoveredId: stateRef.current.hoveredId }
 
   const posRef = useRef<Map<string, { x: number; y: number; r: number }>>(new Map())
+  // Idle angular layout, cached on a data signature so it isn't recomputed every frame.
+  const layoutCacheRef = useRef<{ sig: string; map: Map<string, number> }>({ sig: '', map: new Map() })
   const geomRef = useRef({ cx: 0, cy: 0, R: 0 })
   const mouseRef = useRef({ x: 0, y: 0, inside: false })
   const dragRef = useRef<{ id: string; moved: boolean; startX: number; startY: number } | null>(null)
@@ -274,21 +279,63 @@ export function RadarView(): JSX.Element {
         ctx!.fillText(ring.label, x, y)
       }
 
-      // blips — resolve every angle first: manual overrides + crowd-aware fanning
-      // so same-project/same-deadline tasks don't stack on one spoke.
-      const wedgeSpacing = 360 / Math.max(sectorByKey.size, 1)
-      const angleById = layoutBlipAngles(
-        contacts.map((t) => ({
-          id: t.id,
-          frac: blipRadiusFrac(t, ref),
-          base: sectorByKey.get(t.projectId ?? 'inbox') ?? 0,
-          size: PRIO_SIZE[t.priority],
-          override: t.radarAngle ?? null
-        })),
-        { R, wedgeSpacing }
-      )
-      const positions = new Map<string, { x: number; y: number; r: number }>()
+      // blips — resolve every angle: pinned blips at their override, the rest fanned
+      // around them. The idle layout is cached on a data signature (recompute on
+      // data / day-rollover / resize, not every frame); while a blip is dragged we
+      // recompute live so its same-wedge siblings make room for it under the cursor.
       const drag = dragRef.current
+      const anyDragging = !!drag && drag.moved && mouseRef.current.inside
+      const wedgeSpacing = 360 / Math.max(sectorByKey.size, 1)
+      const baseOf = (t: Task): number => sectorByKey.get(t.projectId ?? 'inbox') ?? 0
+      let angleById: Map<string, number>
+      if (anyDragging && drag) {
+        const mdx = mouseRef.current.x - cx
+        const mdy = mouseRef.current.y - cy
+        const liveAngle = angleFromPoint(mdx, mdy)
+        const liveFrac = Math.hypot(mdx, mdy) / R
+        angleById = layoutBlipAngles(
+          contacts.map((t) =>
+            t.id === drag.id
+              ? { id: t.id, frac: liveFrac, base: baseOf(t), size: PRIO_SIZE[t.priority], override: liveAngle }
+              : {
+                  id: t.id,
+                  frac: blipLayoutFrac(t, ref),
+                  base: baseOf(t),
+                  size: PRIO_SIZE[t.priority],
+                  override: t.radarAngle ?? null
+                }
+          ),
+          { R, wedgeSpacing }
+        )
+      } else {
+        const sig =
+          `${R.toFixed(1)}|${wedgeSpacing.toFixed(2)}|` +
+          contacts
+            .map(
+              (t) =>
+                `${t.id},${t.projectId ?? '-'},${t.radarAngle ?? '-'},${
+                  t.due ? daysFromToday(t.due.date, ref) : '-'
+                },${t.priority}`
+            )
+            .join(';')
+        if (layoutCacheRef.current.sig !== sig) {
+          layoutCacheRef.current = {
+            sig,
+            map: layoutBlipAngles(
+              contacts.map((t) => ({
+                id: t.id,
+                frac: blipLayoutFrac(t, ref),
+                base: baseOf(t),
+                size: PRIO_SIZE[t.priority],
+                override: t.radarAngle ?? null
+              })),
+              { R, wedgeSpacing }
+            )
+          }
+        }
+        angleById = layoutCacheRef.current.map
+      }
+      const positions = new Map<string, { x: number; y: number; r: number }>()
       for (const task of contacts) {
         const angle = angleById.get(task.id) ?? 0
         const dragging = !!drag && drag.id === task.id && drag.moved && mouseRef.current.inside
@@ -429,7 +476,9 @@ export function RadarView(): JSX.Element {
   }
 
   const hud = hudId ? contacts.find((t) => t.id === hudId) : undefined
-  const hasPinned = contacts.some((t) => t.radarAngle != null)
+  // Computed over *all* tasks (not just on-radar ones) so the reset affordance
+  // appears whenever any pin exists — matching what resetRadarLayout actually clears.
+  const hasPinned = tasks.some((t) => t.radarAngle != null)
 
   return (
     <main className="relative flex h-full flex-1 overflow-hidden bg-bg">
@@ -471,6 +520,7 @@ export function RadarView(): JSX.Element {
           className="h-full w-full"
           style={{ cursor: hudId ? 'pointer' : 'crosshair' }}
           onMouseDown={(e) => {
+            if (e.button !== 0) return // primary button only; right-click is handled by onContextMenu
             const { x, y } = toCanvas(e)
             const id = hitTest(x, y)
             if (id) dragRef.current = { id, moved: false, startX: x, startY: y }
@@ -489,6 +539,7 @@ export function RadarView(): JSX.Element {
             }
           }}
           onMouseUp={(e) => {
+            if (e.button !== 0) return // primary button only
             const drag = dragRef.current
             dragRef.current = null
             if (!drag) {
@@ -507,13 +558,22 @@ export function RadarView(): JSX.Element {
             if (R <= 0) return
             const dx = x - cx
             const dy = y - cy
-            const frac = Math.hypot(dx, dy) / R
-            const nextDue = dueForFrac(frac, task)
-            // Drop sets both axes: angle (pinned, visual) + due (radius). Only patch
-            // the due when the radius actually moved it, so a pure angular nudge
-            // doesn't log a phantom "rescheduled" on the activity timeline.
-            const patch: Partial<Task> = { radarAngle: angleFromPoint(dx, dy) }
-            if ((nextDue?.date ?? null) !== (task.due?.date ?? null)) patch.due = nextDue
+            const r = Math.hypot(dx, dy)
+            const frac = r / R
+            // Pin the angle the blip was dropped at — but only if it landed far
+            // enough from the center to *have* a meaningful bearing; otherwise
+            // un-pin, so a drag toward "now" doesn't snap it to a garbage angle.
+            const patch: Partial<Task> = {
+              radarAngle: r > MIN_PIN_PX ? angleFromPoint(dx, dy) : undefined
+            }
+            // Reschedule only when the drop lands in a different day-bucket than the
+            // blip's current radius. A pure angular nudge stays in the same bucket,
+            // so it never shifts the deadline or logs a phantom "rescheduled" —
+            // robust for timed dues too, whose fractional radius rounds to a day.
+            const now = new Date()
+            if (daysFromFrac(frac) !== daysFromFrac(blipRadiusFrac(task, now))) {
+              patch.due = dueForFrac(frac, task)
+            }
             patchTask(drag.id, patch)
           }}
           onContextMenu={(e) => {

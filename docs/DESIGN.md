@@ -96,17 +96,29 @@ blips; other blips take their project's color.
 A blip's **distance from center is a continuous, log-compressed time-to-deadline** (`lib/radar.ts`:
 `daysUntilDue` → `radiusFracForDays`), so near-term tasks spread out and far-future ones compress
 toward the rim; the labeled rings are just gridlines on that axis. Its **angle** defaults to the
-project's sector, but blips are **freely draggable around the dial**: dropping one reschedules it to
-the exact date under the cursor (radius → `daysFromFrac`) *and* pins a per-task `radarAngle`
-(`angleFromPoint`) — a purely visual override that does **not** reassign the project. To stop
-same-project/same-deadline tasks stacking on one spoke, `layoutBlipAngles` **auto-fans** each wedge's
-blips apart only where they'd overlap, widening the arc near the crowded center (small circumference →
-more degrees per pixel) and capping the spread so neighbouring wedges never collide; a manual angle
-always wins. Clear a pinned angle by **right-clicking** the blip, via the selected-panel
-"reset position", the header "reset layout", or the command palette. A pure angular nudge (radius
-unchanged) skips the reschedule so it doesn't add a phantom entry to the activity timeline. The math
-is unit-tested; the canvas honors `prefers-reduced-motion` (freezes the sweep, pings, and pulses).
-Task-blip adaptation of the TerraByte `RADAR` project.
+project's sector, but blips are **freely draggable around the dial**: a drop pins a per-task
+`radarAngle` (`angleFromPoint`) — a purely visual override that does **not** reassign the project —
+and reschedules by radius. Reschedule fires **only when the drop lands in a different day-bucket**
+than the blip's current radius (`daysFromFrac(frac)` vs `daysFromFrac(blipRadiusFrac(task))`), so a
+pure angular nudge never shifts the deadline or adds a phantom `rescheduled` to the activity timeline
+— robust for timed dues too, whose fractional radius rounds to a day. Dropping a blip essentially on
+the bullseye (within `MIN_PIN_PX`) **un-pins** it instead of recording a meaningless bearing.
+
+`layoutBlipAngles` resolves all angles: same-project/same-deadline blips **auto-fan** apart only where
+they'd overlap, the arc widening near the crowded center (small circumference → more degrees per pixel)
+and capped so neighbouring wedges never collide (lone-blip jitter is wedge-bounded too). Pinned blips
+aren't merely "manual wins" — they're **fixed obstacles** the auto blips fan *around* (slot-based
+placement reserves a pinned sibling's slot), so an auto blip never lands on a pinned one. Clustering
+keys on `blipLayoutFrac` (whole-day buckets, not the live timed radius), so same-day blips fan together
+and the layout doesn't twitch as a timed blip's drawn radius drifts. The canvas **caches** this layout
+on a data signature (recompute on data / day-rollover / resize, not every frame) and only recomputes
+live *while a blip is dragged* — feeding the dragged blip in as a live obstacle so its siblings make
+room under the cursor and hand off smoothly on release.
+
+Clear a pinned angle by **right-clicking** the blip (primary-button drags reschedule; the secondary
+button only resets), via the selected-panel "reset position", the header "reset layout", or the
+command palette. The pure math is unit-tested; the canvas honors `prefers-reduced-motion` (freezes the
+sweep, pings, and pulses). Task-blip adaptation of the TerraByte `RADAR` project.
 
 ## Window chrome
 

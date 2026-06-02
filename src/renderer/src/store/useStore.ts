@@ -163,10 +163,18 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setRadarSelected: (radarSelectedId) => set({ radarSelectedId }),
 
-  setRadarAngle: (id, angle) => get().patchTask(id, { radarAngle: angle }),
+  async setRadarAngle(id, angle) {
+    // Visual-only; a failed write (e.g. the task was deleted in another pane) is harmless.
+    try {
+      await get().patchTask(id, { radarAngle: angle })
+    } catch {
+      /* best-effort */
+    }
+  },
   async resetRadarLayout() {
     const pinned = get().tasks.filter((t) => t.radarAngle != null)
-    await Promise.all(pinned.map((t) => get().patchTask(t.id, { radarAngle: undefined })))
+    // allSettled: never reject if a task vanished mid-clear.
+    await Promise.allSettled(pinned.map((t) => get().patchTask(t.id, { radarAngle: undefined })))
   },
 
   calendarPrevMonth: () => set((s) => ({ calendarMonth: addMonths(s.calendarMonth, -1) })),

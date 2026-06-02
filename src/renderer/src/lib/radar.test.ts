@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Task } from '@shared/types'
 import {
   angleFromPoint,
-  blipAngle,
+  blipLayoutFrac,
+  blipRadiusFrac,
   type BlipLayoutInput,
   daysFromFrac,
   daysUntilDue,
@@ -119,20 +120,6 @@ describe('blip helpers (unchanged)', () => {
     expect(hash01('x')).toBeLessThan(1)
   })
 
-  it('blipAngle is stable per task and wraps into [0, 360)', () => {
-    const t = makeTask()
-    expect(blipAngle(t, 90)).toBe(blipAngle(t, 90))
-    const a = blipAngle(t, 350)
-    expect(a).toBeGreaterThanOrEqual(0)
-    expect(a).toBeLessThan(360)
-  })
-
-  it('blipAngle honors a manual radarAngle override (wrapped), ignoring the sector', () => {
-    expect(blipAngle(makeTask({ radarAngle: 123 }), 90)).toBe(123)
-    expect(blipAngle(makeTask({ radarAngle: 400 }), 90)).toBe(40)
-    expect(blipAngle(makeTask({ radarAngle: -10 }), 90)).toBe(350)
-  })
-
   it('sectorBase spreads sectors around the dial', () => {
     expect(sectorBase(0, 4)).toBe(18)
     expect(sectorBase(2, 4)).toBe(198)
@@ -166,6 +153,30 @@ describe('angleFromPoint — drop bearing', () => {
       const a = (b * Math.PI) / 180
       expect(angleFromPoint(Math.sin(a), -Math.cos(a))).toBeCloseTo(b, 6)
     }
+  })
+
+  it('maps a dead-center delta to 0, not the atan2(0,-0)=180 artifact', () => {
+    expect(angleFromPoint(0, 0)).toBe(0)
+  })
+})
+
+describe('blipLayoutFrac — day-bucketed layout radius', () => {
+  it('matches blipRadiusFrac for all-day dues', () => {
+    const t = makeTask({ due: allDay(2026, 4, 30) })
+    expect(blipLayoutFrac(t, REF)).toBeCloseTo(blipRadiusFrac(t, REF), 10)
+  })
+
+  it('buckets timed dues to the whole calendar day (ignores time-of-day)', () => {
+    const morning = makeTask({ due: timed(2026, 4, 29, 6) })
+    const night = makeTask({ due: timed(2026, 4, 29, 23) })
+    // Same calendar day → identical layout radius, even though their live radii differ.
+    expect(blipLayoutFrac(morning, REF)).toBe(blipLayoutFrac(night, REF))
+    expect(blipLayoutFrac(morning, REF)).toBeCloseTo(radiusFracForDays(3), 10) // May 29 − 26 = 3 days
+    expect(blipLayoutFrac(morning, REF)).not.toBeCloseTo(blipRadiusFrac(morning, REF), 4)
+  })
+
+  it('parks undated tasks at the someday band', () => {
+    expect(blipLayoutFrac(makeTask({}), REF)).toBe(R_SOMEDAY)
   })
 })
 
@@ -239,5 +250,30 @@ describe('layoutBlipAngles — crowd-aware fanning', () => {
     )
     expect(m.get('c')).toBe(250)
     expect(m.get('a')).not.toBe(m.get('b'))
+  })
+
+  it('fans auto blips away from a pinned obstacle in the same wedge + day', () => {
+    const delta = (x: number, y: number): number => {
+      const d = Math.abs(((x % 360) + 360) % 360 - (((y % 360) + 360) % 360))
+      return d > 180 ? 360 - d : d
+    }
+    const m = layoutBlipAngles(
+      [input({ id: 'pin', override: 90 }), input({ id: 'a' }), input({ id: 'b' })],
+      OPTS
+    )
+    expect(m.get('pin')).toBe(90) // obstacle stays put
+    const a = m.get('a')!
+    const b = m.get('b')!
+    expect(a).not.toBe(b)
+    // Neither auto blip lands on (or hard against) the pinned blip's angle.
+    expect(delta(a, 90)).toBeGreaterThan(10)
+    expect(delta(b, 90)).toBeGreaterThan(10)
+  })
+
+  it('keeps a lone blip inside its wedge even when wedges are narrow', () => {
+    const narrow = { R: 300, wedgeSpacing: 15 } // ~24 sectors → 15° wedges, 7.5° half-wedge
+    const a = layoutBlipAngles([input({ id: 'solo', base: 30 })], narrow).get('solo')!
+    // Clamped to the fan half-span (< the 7.5° half-wedge), not the full ±8° jitter → no bleed.
+    expect(Math.abs(a - 30)).toBeLessThanOrEqual((15 * 0.72) / 2 + 1e-9)
   })
 })
