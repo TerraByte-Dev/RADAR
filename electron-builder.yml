@@ -7,7 +7,7 @@ files:
   - out/**/*
   - package.json
 win:
-  icon: build/icon.png
+  icon: build/icon.ico
   target:
     - nsis
 nsis:
