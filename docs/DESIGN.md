@@ -39,6 +39,12 @@ Pure-black canvas, phosphor-green ink, terminal channel accents.
 > palette, so any pre-existing utility class renders on-brand without edits. New code should
 > prefer the explicit tokens (`phosphor`, `term.*`, `panel`, `lcd`, `rule`).
 
+**Project swatches** are a separate curated set — 16 calm, wheel-ordered hues in
+`lib/palette.ts` (`PROJECT_COLORS`), kept clear of the phosphor accent and the overdue red so a
+project's color never reads as state. A new project auto-picks the **least-used** swatch
+(`nextProjectColor`), so projects stay visually distinct until the whole palette is in play; the
+recolor picker (`ProjectContextMenu`, a 4×4 grid) renders the same set.
+
 ## Type
 
 | Family | Token | Used for |
