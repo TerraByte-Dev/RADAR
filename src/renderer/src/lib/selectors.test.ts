@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ProjectRecord } from '@shared/radar'
 import { dayKey } from './date'
 import {
+  activityCounts,
   buildLogbook,
   deadlineDate,
   isNeglected,
@@ -91,5 +92,14 @@ describe('parseSessionLog + buildLogbook', () => {
     expect(days[0].key).toBe('2026-05-25') // newest first
     expect(days[0].items[0].projectName).toBe('Proj')
     expect(days[1].key).toBe('2026-05-20')
+  })
+
+  it('counts session entries per day across projects (heatmap data)', () => {
+    const counts = activityCounts([
+      p({ blipPath: 'x', sessionLog: log }),
+      p({ blipPath: 'y', sessionLog: `## 2026-05-25 — Other\n- more\n` })
+    ])
+    expect(counts.get('2026-05-20')).toBe(1)
+    expect(counts.get('2026-05-25')).toBe(2)
   })
 })

@@ -144,6 +144,17 @@ export interface LogDay {
   items: LogItem[]
 }
 
+/** Count session-log entries per local day across all projects — feeds the activity heatmap. */
+export function activityCounts(projects: ProjectRecord[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const p of projects) {
+    for (const e of parseSessionLog(p.sessionLog)) {
+      counts.set(e.date, (counts.get(e.date) ?? 0) + 1)
+    }
+  }
+  return counts
+}
+
 /** Every project's session-log entries, newest first, grouped by day. The portfolio timeline. */
 export function buildLogbook(projects: ProjectRecord[], ref: Date = new Date()): LogDay[] {
   const items: LogItem[] = []

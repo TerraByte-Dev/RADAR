@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { ActivityHeatmap } from '../components/ActivityHeatmap'
 import { buildLogbook } from '../lib/selectors'
 import { categoryColor } from '../lib/projectRadar'
 import { useStore } from '../store/useStore'
@@ -28,6 +29,9 @@ export function LogbookView(): JSX.Element {
       </header>
 
       <div className="track-scan flex-1 overflow-y-auto px-6 pb-12">
+        <div className="pb-6 pt-1">
+          <ActivityHeatmap />
+        </div>
         {days.length === 0 ? (
           <div className="mt-24 text-center font-mono text-xs uppercase tracking-[0.12em] text-faint">
             {'// logbook empty'}
