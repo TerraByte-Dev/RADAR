@@ -279,22 +279,32 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   async dismissProject(project) {
-    set((s) => ({
-      projects: s.projects.filter((p) => p.blipPath !== project.blipPath),
-      selectedBlip: s.selectedBlip === project.blipPath ? null : s.selectedBlip
-    }))
-    const config = await window.radar.ignore(project.path)
-    set({ config })
+    // Await the write first, then update — so a stale IPC channel fails honestly
+    // (project stays put) instead of vanishing and re-appearing on the next scan.
+    try {
+      const config = await window.radar.ignore(project.path)
+      set((s) => ({
+        projects: s.projects.filter((p) => p.blipPath !== project.blipPath),
+        selectedBlip: s.selectedBlip === project.blipPath ? null : s.selectedBlip,
+        config
+      }))
+    } catch (e) {
+      console.warn('dismiss failed — restart `npm run dev` to load the radar:ignore channel', e)
+    }
   },
 
   archiveProject: (blipPath) => get().setFields(blipPath, { status: 'archived' }),
 
   async deleteProject(blipPath) {
-    set((s) => ({
-      projects: s.projects.filter((p) => p.blipPath !== blipPath),
-      selectedBlip: s.selectedBlip === blipPath ? null : s.selectedBlip
-    }))
-    await window.radar.deleteProject(blipPath)
+    try {
+      await window.radar.deleteProject(blipPath)
+      set((s) => ({
+        projects: s.projects.filter((p) => p.blipPath !== blipPath),
+        selectedBlip: s.selectedBlip === blipPath ? null : s.selectedBlip
+      }))
+    } catch (e) {
+      console.warn('delete failed — restart `npm run dev` to load the radar:delete channel', e)
+    }
   },
 
   async restoreProject(path) {
