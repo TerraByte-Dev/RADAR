@@ -132,3 +132,13 @@ The BrowserWindow is **frameless** (`frame: false`); the renderer draws its own 
 (`TODOPLUS//SYS` logotype, live clock, open-count, minimize/maximize/close). Controls send
 IPC (`window:minimize|maximize|close`) handled in `src/main/index.ts`. Drag regions use
 `.drag-region` / `.no-drag`.
+
+## Brand mark
+
+The TerraByte globe-sword mark is a **monochrome mint (`#00E5A0`) on transparent** PNG:
+`src/renderer/src/assets/logo.png` (imported by `Sidebar` + `BootSplash`, both rendered with a
+phosphor `drop-shadow` and `mix-blend-mode: screen` for glow — the transparent background means the
+blend is cosmetic, not load-bearing) and `build/icon.png` (the runtime window icon, set in
+`main/index.ts`). The Windows installer/exe uses a multi-size **`build/icon.ico`** (256/128/64/48/32/16,
+wired in `electron-builder.yml`). All three are regenerable from a single source mark with ImageMagick
+(`-transparent "#050A08"` → resize / `-define icon:auto-resize`).

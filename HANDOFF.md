@@ -32,8 +32,11 @@ skin. Feature-complete and green on all gates.
   (`#project @tag p1 tomorrow 5pm`), command palette (`⌘/Ctrl+K`), global quick-add hotkey, full
   keyboard control.
 - **Chrome** — frameless window, custom `TitleBar` (logo + live clock + window controls), CRT overlay
-  (toggleable), boot splash. The **TerraByte globe-sword logo** is in the sidebar, boot splash, and
-  installer icon (rendered `mix-blend-mode: screen` so the black backdrop drops out).
+  (toggleable), boot splash. The **TerraByte globe-sword mark** (monochrome mint `#00E5A0`) is in the
+  sidebar, boot splash, runtime window icon, and installer. The art is now a **transparent-background**
+  PNG (`src/renderer/src/assets/logo.png` + `build/icon.png`), so it drops in clean without needing the
+  `mix-blend-mode: screen` trick (the screen blend + phosphor drop-shadow are kept for glow). Windows
+  packaging uses a proper multi-size `build/icon.ico` (256→16) for a crisp taskbar/exe icon.
 
 ## State of play
 
@@ -83,7 +86,6 @@ npm run package      # electron-builder → Windows NSIS installer (uses electro
 - **Recurring tasks** (repeat rules) and/or **due reminders** via native notifications.
 - **Settings panel** — CRT intensity, data export/import (JSON backup — it's local-only), theme knobs.
 - **Packaging/release** — produce a signed NSIS installer; consider `electron-updater` like TerraPlayer.
-- **Logo polish** — a transparent-background PNG + proper multi-size `.ico` for a cleaner taskbar icon.
 - **More tests** — component/interaction coverage (the radar interaction layer is only manually verified).
 
 ## First moves in a fresh session
