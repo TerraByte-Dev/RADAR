@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { DueDate, Priority, Project, Subtask, Task } from '@shared/types'
 import type { ParsedQuickAdd } from '../lib/nlp'
 import { addMonths, currentMonth, dayKey, type YearMonth } from '../lib/date'
-import { randomProjectColor } from '../lib/palette'
+import { nextProjectColor } from '../lib/palette'
 
 export type View =
   | { kind: 'radar' }
@@ -295,7 +295,11 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   async addProject(name, color) {
-    const project = await window.api.createProject({ name, color: color ?? randomProjectColor() })
+    const project = await window.api.createProject({
+      name,
+      // Auto-pick the least-used palette color so new projects stay distinct.
+      color: color ?? nextProjectColor(get().projects.map((p) => p.color))
+    })
     set((s) => ({ projects: [...s.projects, project] }))
     return project
   },
