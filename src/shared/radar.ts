@@ -61,6 +61,8 @@ export interface RadarConfig {
   maxDepth: number
   /** The app-managed RADAR workspace (home of the Inbox blip). */
   workspace: string
+  /** Project folders dismissed from the radar (hidden without deleting anything). */
+  ignored: string[]
 }
 
 export type BlipTaskAction = 'add' | 'done' | 'undone' | 'toggle' | 'rm' | 'edit'
@@ -113,9 +115,15 @@ export interface RadarApi {
   initProject(dir: string, opts: InitProjectOptions): Promise<ProjectRecord>
   /** Append a task to the app-managed Inbox `BLIP.md` (universal capture). */
   inboxAddTask(text: string): Promise<ProjectRecord>
+  /** Delete a project's BLIP.md from disk (used to undo an accidental adopt). */
+  deleteProject(blipPath: string): Promise<void>
   getConfig(): Promise<RadarConfig>
   addRoot(root: string): Promise<RadarConfig>
   removeRoot(root: string): Promise<RadarConfig>
+  /** Dismiss a project folder from the radar (hide without deleting). */
+  ignore(path: string): Promise<RadarConfig>
+  /** Un-dismiss a previously ignored folder. */
+  unignore(path: string): Promise<RadarConfig>
   /** Native folder picker; returns the chosen absolute path or null. */
   pickFolder(): Promise<string | null>
   openPath(path: string): Promise<void>

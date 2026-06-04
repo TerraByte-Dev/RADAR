@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { RotateCcw } from 'lucide-react'
+import {
+  Archive,
+  ExternalLink,
+  EyeOff,
+  FolderOpen,
+  PanelRight,
+  RotateCcw,
+  Sparkles,
+  Trash2
+} from 'lucide-react'
 import type { ProjectRecord } from '@shared/radar'
 import { ProjectDetail } from '../components/ProjectDetail'
 import {
@@ -43,8 +52,10 @@ export function RadarView(): JSX.Element {
   const { setSelectedBlip, setFields, resetRadarLayout } = useStore.getState()
 
   const [hudId, setHudId] = useState<string | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; blipPath: string } | null>(null)
 
   const contacts = useMemo(() => projectsOnRadar(projects), [projects])
+  const menuProject = menu ? projects.find((p) => p.blipPath === menu.blipPath) : undefined
 
   // Stable angular sector per category.
   const sectorByKey = useMemo(() => {
@@ -562,8 +573,7 @@ export function RadarView(): JSX.Element {
             e.preventDefault()
             const { x, y } = toCanvas(e)
             const id = hitTest(x, y)
-            const proj = id ? projects.find((p) => p.blipPath === id) : undefined
-            if (proj?.radar_angle != null) setFields(proj.blipPath, { radar_angle: null })
+            setMenu(id ? { x: e.clientX, y: e.clientY, blipPath: id } : null)
           }}
           onMouseLeave={() => {
             mouseRef.current.inside = false
@@ -591,6 +601,97 @@ export function RadarView(): JSX.Element {
           <ProjectDetail project={selected} onClose={() => setSelectedBlip(null)} />
         </aside>
       )}
+
+      {menu && menuProject && (
+        <BlipMenu project={menuProject} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />
+      )}
     </main>
+  )
+}
+
+/** Right-click menu for a blip — adopt/dismiss a ghost, or open/archive/delete a project. */
+function BlipMenu({
+  project,
+  x,
+  y,
+  onClose
+}: {
+  project: ProjectRecord
+  x: number
+  y: number
+  onClose: () => void
+}): JSX.Element {
+  const { adoptGhost, dismissProject, archiveProject, deleteProject, setSelectedBlip, setFields } =
+    useStore.getState()
+  const item =
+    'flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.06em] text-muted transition-colors hover:bg-phosphor/10 hover:text-phosphor'
+  const run =
+    (fn: () => void): (() => void) =>
+    () => {
+      fn()
+      onClose()
+    }
+  const left = Math.min(x, window.innerWidth - 200)
+  const top = Math.min(y, window.innerHeight - 240)
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-[70]"
+        onClick={onClose}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          onClose()
+        }}
+      />
+      <div
+        className="fixed z-[71] min-w-[184px] border border-phosphor/40 bg-panel py-1 shadow-glow-strong"
+        style={{ left, top }}
+      >
+        <div className="truncate px-3 pb-1 pt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
+          {project.name ?? 'Project'}
+        </div>
+        {project.ghost ? (
+          <>
+            <button className={item} onClick={run(() => adoptGhost(project))}>
+              <Sparkles size={12} /> Adopt
+            </button>
+            <button className={item} onClick={run(() => dismissProject(project))}>
+              <EyeOff size={12} /> Dismiss
+            </button>
+          </>
+        ) : (
+          <>
+            <button className={item} onClick={run(() => setSelectedBlip(project.blipPath))}>
+              <PanelRight size={12} /> Open
+            </button>
+            {project.radar_angle != null && (
+              <button className={item} onClick={run(() => setFields(project.blipPath, { radar_angle: null }))}>
+                <RotateCcw size={12} /> Reset position
+              </button>
+            )}
+            <button className={item} onClick={run(() => archiveProject(project.blipPath))}>
+              <Archive size={12} /> Archive
+            </button>
+            <button
+              className={item}
+              onClick={run(() => {
+                if (window.confirm(`Delete ${project.name ?? 'this project'}'s BLIP.md? This removes the file from disk.`))
+                  deleteProject(project.blipPath)
+              })}
+            >
+              <Trash2 size={12} /> Delete BLIP.md…
+            </button>
+          </>
+        )}
+        <div className="my-1 h-px bg-rule" />
+        <button className={item} onClick={run(() => window.radar.reveal(project.ghost ? project.path : project.blipPath))}>
+          <FolderOpen size={12} /> Reveal
+        </button>
+        <button className={item} onClick={run(() => window.radar.openInEditor(project.path))}>
+          <ExternalLink size={12} /> Open in editor
+        </button>
+      </div>
+    </>
   )
 }

@@ -13,6 +13,7 @@ interface PersistedConfig {
   roots?: string[]
   maxDepth?: number
   workspace?: string
+  ignored?: string[]
 }
 
 const DEFAULT_MAX_DEPTH = 5
@@ -46,7 +47,12 @@ export function getConfig(): RadarConfig {
   const workspace = parsed.workspace ?? defaultWorkspace()
   // The workspace is always a root (its Inbox blip must always show); env roots are ephemeral.
   const roots = [...new Set([...(parsed.roots ?? []), workspace, ...envRoots()])]
-  return { roots, maxDepth: parsed.maxDepth ?? DEFAULT_MAX_DEPTH, workspace }
+  return {
+    roots,
+    maxDepth: parsed.maxDepth ?? DEFAULT_MAX_DEPTH,
+    workspace,
+    ignored: parsed.ignored ?? []
+  }
 }
 
 export function setConfig(patch: Partial<RadarConfig>): RadarConfig {
@@ -60,7 +66,11 @@ export function setConfig(patch: Partial<RadarConfig>): RadarConfig {
   mkdirSync(join(p, '..'), { recursive: true })
   writeFileSync(
     p,
-    JSON.stringify({ roots: persistRoots, maxDepth: next.maxDepth, workspace: next.workspace }, null, 2),
+    JSON.stringify(
+      { roots: persistRoots, maxDepth: next.maxDepth, workspace: next.workspace, ignored: next.ignored },
+      null,
+      2
+    ),
     'utf8'
   )
   return next
@@ -76,4 +86,15 @@ export function removeRoot(root: string): RadarConfig {
   const cfg = getConfig()
   // The workspace root can't be removed (getConfig always re-adds it anyway).
   return setConfig({ roots: cfg.roots.filter((r) => r !== root) })
+}
+
+export function addIgnore(path: string): RadarConfig {
+  const cfg = getConfig()
+  if (cfg.ignored.includes(path)) return cfg
+  return setConfig({ ignored: [...cfg.ignored, path] })
+}
+
+export function removeIgnore(path: string): RadarConfig {
+  const cfg = getConfig()
+  return setConfig({ ignored: cfg.ignored.filter((p) => p !== path) })
 }

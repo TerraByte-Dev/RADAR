@@ -55,9 +55,12 @@ const radar: RadarApi = {
     ipcRenderer.invoke(IPC.radarInit, dir, opts),
   inboxAddTask: (text: string): Promise<ProjectRecord> =>
     ipcRenderer.invoke(IPC.radarInboxAdd, text),
+  deleteProject: (blipPath: string): Promise<void> => ipcRenderer.invoke(IPC.radarDelete, blipPath),
   getConfig: (): Promise<RadarConfig> => ipcRenderer.invoke(IPC.radarConfigGet),
   addRoot: (root: string): Promise<RadarConfig> => ipcRenderer.invoke(IPC.radarAddRoot, root),
   removeRoot: (root: string): Promise<RadarConfig> => ipcRenderer.invoke(IPC.radarRemoveRoot, root),
+  ignore: (path: string): Promise<RadarConfig> => ipcRenderer.invoke(IPC.radarIgnore, path),
+  unignore: (path: string): Promise<RadarConfig> => ipcRenderer.invoke(IPC.radarUnignore, path),
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke(IPC.radarPickFolder),
   openPath: (path: string): Promise<void> => ipcRenderer.invoke(IPC.radarOpenPath, path),
   reveal: (path: string): Promise<void> => ipcRenderer.invoke(IPC.radarReveal, path),

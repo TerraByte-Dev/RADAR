@@ -124,6 +124,14 @@ interface StoreState {
   adoptFolder(): Promise<void>
   /** Adopt a ghost blip in place — write its BLIP.md and turn it into a tracked project. */
   adoptGhost(project: ProjectRecord): Promise<void>
+  /** Dismiss a project/ghost from the radar (ignore-list it; nothing on disk changes). */
+  dismissProject(project: ProjectRecord): Promise<void>
+  /** Archive a project (status: archived → hidden from the radar; reversible). */
+  archiveProject(blipPath: string): Promise<void>
+  /** Permanently delete a project's BLIP.md (undo an accidental adopt). */
+  deleteProject(blipPath: string): Promise<void>
+  /** Restore a dismissed project folder back onto the radar. */
+  restoreProject(path: string): Promise<void>
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -268,5 +276,29 @@ export const useStore = create<StoreState>((set, get) => ({
   async adoptGhost(project) {
     const rec = await window.radar.initProject(project.path, { name: project.name })
     set((s) => ({ projects: replace(s.projects, rec), selectedBlip: rec.blipPath }))
+  },
+
+  async dismissProject(project) {
+    set((s) => ({
+      projects: s.projects.filter((p) => p.blipPath !== project.blipPath),
+      selectedBlip: s.selectedBlip === project.blipPath ? null : s.selectedBlip
+    }))
+    const config = await window.radar.ignore(project.path)
+    set({ config })
+  },
+
+  archiveProject: (blipPath) => get().setFields(blipPath, { status: 'archived' }),
+
+  async deleteProject(blipPath) {
+    set((s) => ({
+      projects: s.projects.filter((p) => p.blipPath !== blipPath),
+      selectedBlip: s.selectedBlip === blipPath ? null : s.selectedBlip
+    }))
+    await window.radar.deleteProject(blipPath)
+  },
+
+  async restoreProject(path) {
+    const config = await window.radar.unignore(path)
+    set({ config })
   }
 }))

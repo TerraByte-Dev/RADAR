@@ -1,4 +1,4 @@
-import { readdir } from 'node:fs/promises'
+import { readdir, unlink } from 'node:fs/promises'
 import { join, basename } from 'node:path'
 import { readBlip, writeBlipAtomic, createBlip } from 'radar-blip'
 import type {
@@ -187,6 +187,16 @@ export async function handoff(
   noteSelfWrite(blipPath)
   await writeBlipAtomic(blipPath, blip)
   return readProject(blipPath)
+}
+
+/** Delete a project's BLIP.md from disk (undo an accidental adopt). Best-effort. */
+export async function deleteProject(blipPath: string): Promise<void> {
+  noteSelfWrite(blipPath)
+  try {
+    await unlink(blipPath)
+  } catch {
+    /* already gone — fine */
+  }
 }
 
 /** Create a BLIP.md in `dir` (adopt a folder / ghost). */

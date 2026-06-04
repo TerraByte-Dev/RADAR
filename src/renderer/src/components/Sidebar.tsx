@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   AlarmClock,
   CalendarRange,
@@ -8,6 +8,7 @@ import {
   Monitor,
   Radar,
   ScrollText,
+  Settings as SettingsIcon,
   Sun
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -15,6 +16,7 @@ import logo from '../assets/logo.png'
 import { isNeglected, projectsForView } from '../lib/selectors'
 import { categoryColor } from '../lib/projectRadar'
 import { useStore, type View } from '../store/useStore'
+import { Settings } from './Settings'
 
 function NavRow({
   icon: Icon,
@@ -71,6 +73,7 @@ export function Sidebar(): JSX.Element {
   const view = useStore((s) => s.view)
   const crt = useStore((s) => s.crtEffects)
   const { setView, setSelectedBlip, toggleCrt, adoptFolder, addWorkspaceRoot } = useStore.getState()
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const live = useMemo(() => projects.filter((p) => p.status !== 'archived' && !p.ghost), [projects])
   const counts = useMemo(
@@ -170,8 +173,20 @@ export function Sidebar(): JSX.Element {
           <Monitor size={12} />
           CRT {crt ? 'ON' : 'OFF'}
         </button>
-        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-faint/70">v0.1.0</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSettingsOpen(true)}
+            title="Workspace settings"
+            aria-label="Workspace settings"
+            className="text-faint transition-colors hover:text-phosphor"
+          >
+            <SettingsIcon size={12} />
+          </button>
+          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-faint/70">v0.1.0</span>
+        </div>
       </div>
+
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </aside>
   )
 }
