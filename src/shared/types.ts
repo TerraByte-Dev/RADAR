@@ -81,7 +81,16 @@ export interface AppData {
 /** Fields the renderer may send when creating a task. (Repo owns the rest.) */
 export type NewTaskInput = Omit<
   Task,
-  'id' | 'createdAt' | 'completed' | 'completedAt' | 'order' | 'subtasks' | 'activity' | 'starred'
+  | 'id'
+  | 'createdAt'
+  | 'completed'
+  | 'completedAt'
+  | 'order'
+  | 'subtasks'
+  | 'activity'
+  | 'starred'
+  // radarAngle is a visual override set by dragging an existing blip — never at creation.
+  | 'radarAngle'
 > &
   Partial<Pick<Task, 'completed' | 'order'>>
 

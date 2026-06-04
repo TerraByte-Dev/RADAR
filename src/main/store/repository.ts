@@ -18,18 +18,18 @@ function activity(kind: ActivityKind, text?: string, ts = new Date().toISOString
   return { id: randomUUID(), ts, kind, text }
 }
 
+/** Clamp a manual radar angle to a clean number in [0, 360), or drop it if invalid. */
+function normalizeAngle(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? ((v % 360) + 360) % 360 : undefined
+}
+
 /** Backfill fields added in later versions so older documents stay valid. */
 function normalizeTask(t: Task): Task {
   const subtasks = Array.isArray(t.subtasks) ? t.subtasks : []
   const starred = t.starred ?? false
   const existing = Array.isArray(t.activity) ? t.activity : []
   const seeded = existing.length ? existing : [activity('created', undefined, t.createdAt)]
-  // Keep any manual radar angle as a clean number in [0, 360); drop bad values.
-  const radarAngle =
-    typeof t.radarAngle === 'number' && Number.isFinite(t.radarAngle)
-      ? ((t.radarAngle % 360) + 360) % 360
-      : undefined
-  return { ...t, subtasks, starred, activity: seeded, radarAngle }
+  return { ...t, subtasks, starred, activity: seeded, radarAngle: normalizeAngle(t.radarAngle) }
 }
 
 /**
@@ -115,6 +115,10 @@ export class Repository {
     // The repository owns the activity log — never let a patch overwrite it.
     const { activity: _ignored, ...safePatch } = patch
     void _ignored
+
+    // Defense-in-depth: clamp a manual radar angle on every write path (normalizeTask
+    // only runs on disk read), so an out-of-range / NaN angle can never reach the store.
+    if ('radarAngle' in safePatch) safePatch.radarAngle = normalizeAngle(safePatch.radarAngle)
 
     // Diff against the current task to auto-log meaningful changes.
     if ('due' in safePatch && safePatch.due?.date !== task.due?.date) {
