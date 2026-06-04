@@ -38,11 +38,12 @@ interface Candidate {
 }
 
 /**
- * Classify the tree. Every `BLIP.md` (at any depth) is a tracked project. A directory
- * with a marker file but no `BLIP.md` is a **ghost** (adoptable with one click) — only
- * the outermost ghost per subtree is surfaced, but nested tracked projects always are.
+ * Classify the tree. A `BLIP.md` marks a **project** and is a hard **boundary** — its
+ * subfolders belong to it, so we never descend into them (adopt a subfolder explicitly to
+ * track it on its own). A directory with a marker file but no `BLIP.md` is a **ghost**
+ * (adoptable with one click) — also a boundary. Everything else is descended into.
  */
-async function* classify(dir: string, depth: number, insideGhost: boolean): AsyncGenerator<Candidate> {
+async function* classify(dir: string, depth: number): AsyncGenerator<Candidate> {
   if (depth < 0) return
   let entries
   try {
@@ -51,24 +52,22 @@ async function* classify(dir: string, depth: number, insideGhost: boolean): Asyn
     return // unreadable dir — skip silently
   }
   const files = new Set(entries.filter((e) => e.isFile()).map((e) => e.name))
-  const hasBlip = files.has('BLIP.md')
-  if (hasBlip) yield { dir, blipPath: join(dir, 'BLIP.md') }
-
-  let nowInside = insideGhost
-  if (!hasBlip && !insideGhost) {
-    const hints: string[] = []
-    if (entries.some((e) => e.isDirectory() && e.name === '.git')) hints.push('git')
-    if (files.has('CLAUDE.md')) hints.push('CLAUDE.md')
-    if (files.has('AGENTS.md')) hints.push('AGENTS.md')
-    if (hints.length) {
-      yield { dir, ghostHints: hints }
-      nowInside = true // don't surface nested ghosts inside this repo (still find nested BLIP.md)
-    }
+  if (files.has('BLIP.md')) {
+    yield { dir, blipPath: join(dir, 'BLIP.md') }
+    return // project boundary — its subfolders are part of it, not separate blips
+  }
+  const hints: string[] = []
+  if (entries.some((e) => e.isDirectory() && e.name === '.git')) hints.push('git')
+  if (files.has('CLAUDE.md')) hints.push('CLAUDE.md')
+  if (files.has('AGENTS.md')) hints.push('AGENTS.md')
+  if (hints.length) {
+    yield { dir, ghostHints: hints }
+    return // ghost boundary — adopt it to start tracking; don't surface its insides
   }
 
   for (const e of entries) {
     if (e.isDirectory() && !IGNORE.has(e.name) && !e.name.startsWith('.')) {
-      yield* classify(join(dir, e.name), depth - 1, nowInside)
+      yield* classify(join(dir, e.name), depth - 1)
     }
   }
 }
@@ -95,7 +94,7 @@ export async function scanProjects(roots: string[], maxDepth = 5): Promise<Proje
   const seen = new Set<string>()
   const records: ProjectRecord[] = []
   for (const root of roots) {
-    for await (const c of classify(root, maxDepth, false)) {
+    for await (const c of classify(root, maxDepth)) {
       if (seen.has(c.dir)) continue
       seen.add(c.dir)
       records.push(c.blipPath ? await readProject(c.blipPath, c.dir) : ghostRecord(c.dir, c.ghostHints!))

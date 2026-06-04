@@ -4,7 +4,10 @@ import {
   ExternalLink,
   EyeOff,
   FolderOpen,
+  FolderPlus,
+  FolderSearch,
   PanelRight,
+  Plus,
   RotateCcw,
   Sparkles,
   Trash2
@@ -28,8 +31,7 @@ import {
   prioSize,
   projectLayoutFrac,
   projectRadiusFrac,
-  projectRelativeDeadline,
-  taskRatio
+  projectRelativeDeadline
 } from '../lib/projectRadar'
 import { projectsOnRadar } from '../lib/selectors'
 import { useStore } from '../store/useStore'
@@ -40,10 +42,24 @@ const PING_MS = 950
 const MIN_PIN_PX = 8
 const NO_CATEGORY = '·'
 
+const MENU_ITEM =
+  'flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.06em] text-muted transition-colors hover:bg-phosphor/10 hover:text-phosphor'
+
 function hexA(hex: string, a: number): string {
   if (!hex.startsWith('#') || hex.length < 7) return hex
   const n = parseInt(hex.slice(1), 16)
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
+}
+
+/** A small up-pointing "ship" marker — one per open task inside a project's fleet ring. */
+function drawShip(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, color: string): void {
+  ctx.beginPath()
+  ctx.moveTo(x, y - s)
+  ctx.lineTo(x - s * 0.85, y + s * 0.7)
+  ctx.lineTo(x + s * 0.85, y + s * 0.7)
+  ctx.closePath()
+  ctx.fillStyle = color
+  ctx.fill()
 }
 
 export function RadarView(): JSX.Element {
@@ -52,7 +68,7 @@ export function RadarView(): JSX.Element {
   const { setSelectedBlip, setFields, resetRadarLayout } = useStore.getState()
 
   const [hudId, setHudId] = useState<string | null>(null)
-  const [menu, setMenu] = useState<{ x: number; y: number; blipPath: string } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; blipPath: string | null } | null>(null)
 
   const contacts = useMemo(() => projectsOnRadar(projects), [projects])
   const menuProject = menu ? projects.find((p) => p.blipPath === menu.blipPath) : undefined
@@ -330,10 +346,12 @@ export function RadarView(): JSX.Element {
           : isOverdueProject(proj, ref)
             ? '#FF3030'
             : categoryColor(proj.category)
-        const baseSize = prioSize(proj.priority)
-        let size = baseSize
+        const openTasks = proj.tasks.filter((t) => !t.done).length
+        const isFleet = !proj.ghost && proj.tasks.length > 0
+        let size = prioSize(proj.priority)
+        if (isFleet) size += 3 + Math.min(openTasks, 8) * 1.1
         if (!reduce && proj.priority === 1) size += Math.sin(now / 380) * 0.7
-        positions.set(proj.blipPath, { x, y, r: baseSize })
+        positions.set(proj.blipPath, { x, y, r: size })
 
         if (proj.ghost) {
           // Un-adopted repo: a faint hollow dashed ring — a potential contact.
@@ -360,22 +378,34 @@ export function RadarView(): JSX.Element {
             ctx!.stroke()
           }
 
-          const ratio = taskRatio(proj)
-          if (ratio > 0) {
-            ctx!.beginPath()
-            ctx!.arc(x, y, size + 3, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2)
-            ctx!.strokeStyle = hexA(ACCENT, 0.85)
-            ctx!.lineWidth = 1.6
-            ctx!.stroke()
-          }
-
-          ctx!.beginPath()
-          ctx!.arc(x, y, size, 0, 7)
-          ctx!.fillStyle = color
           ctx!.shadowColor = color
-          ctx!.shadowBlur = proj.status === 'blocked' && !reduce ? 6 + Math.sin(now / 200) * 6 : 9
-          ctx!.fill()
-          ctx!.shadowBlur = 0
+          ctx!.shadowBlur = proj.status === 'blocked' && !reduce ? 6 + Math.sin(now / 200) * 6 : 8
+          if (isFleet) {
+            // Fleet — a hollow ring holding one "ship" marker per open task.
+            ctx!.beginPath()
+            ctx!.arc(x, y, size, 0, 7)
+            ctx!.strokeStyle = color
+            ctx!.lineWidth = proj.priority === 1 ? 2.2 : 1.6
+            ctx!.stroke()
+            ctx!.shadowBlur = 0
+            const m = Math.min(openTasks, 7)
+            const rin = size * 0.46
+            for (let i = 0; i < m; i++) {
+              if (m === 1) {
+                drawShip(ctx!, x, y, 2.7, color)
+              } else {
+                const a = (i / m) * Math.PI * 2 - Math.PI / 2
+                drawShip(ctx!, x + Math.cos(a) * rin, y + Math.sin(a) * rin, 2.5, color)
+              }
+            }
+          } else {
+            // A single craft (no tasks) — a solid blip.
+            ctx!.beginPath()
+            ctx!.arc(x, y, size, 0, 7)
+            ctx!.fillStyle = color
+            ctx!.fill()
+            ctx!.shadowBlur = 0
+          }
 
           // signal-lost: a dashed warning ring
           if (proj.error) {
@@ -572,8 +602,7 @@ export function RadarView(): JSX.Element {
           onContextMenu={(e) => {
             e.preventDefault()
             const { x, y } = toCanvas(e)
-            const id = hitTest(x, y)
-            setMenu(id ? { x: e.clientX, y: e.clientY, blipPath: id } : null)
+            setMenu({ x: e.clientX, y: e.clientY, blipPath: hitTest(x, y) })
           }}
           onMouseLeave={() => {
             mouseRef.current.inside = false
@@ -602,10 +631,52 @@ export function RadarView(): JSX.Element {
         </aside>
       )}
 
-      {menu && menuProject && (
+      {menu && menu.blipPath && menuProject && (
         <BlipMenu project={menuProject} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />
       )}
+      {menu && !menu.blipPath && (
+        <RadarBgMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} />
+      )}
     </main>
+  )
+}
+
+/** Right-click menu over empty radar space — add a project / capture a task. */
+function RadarBgMenu({ x, y, onClose }: { x: number; y: number; onClose: () => void }): JSX.Element {
+  const { adoptFolder, addWorkspaceRoot, setQuickAddOpen } = useStore.getState()
+  const run =
+    (fn: () => void): (() => void) =>
+    () => {
+      fn()
+      onClose()
+    }
+  const left = Math.min(x, window.innerWidth - 200)
+  const top = Math.min(y, window.innerHeight - 160)
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-[70]"
+        onClick={onClose}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          onClose()
+        }}
+      />
+      <div
+        className="fixed z-[71] min-w-[184px] border border-phosphor/40 bg-panel py-1 shadow-glow-strong"
+        style={{ left, top }}
+      >
+        <button className={MENU_ITEM} onClick={run(() => setQuickAddOpen(true))}>
+          <Plus size={12} /> Quick capture
+        </button>
+        <button className={MENU_ITEM} onClick={run(adoptFolder)}>
+          <FolderPlus size={12} /> Adopt a folder…
+        </button>
+        <button className={MENU_ITEM} onClick={run(addWorkspaceRoot)}>
+          <FolderSearch size={12} /> Scan a workspace…
+        </button>
+      </div>
+    </>
   )
 }
 
@@ -623,8 +694,7 @@ function BlipMenu({
 }): JSX.Element {
   const { adoptGhost, dismissProject, archiveProject, deleteProject, setSelectedBlip, setFields } =
     useStore.getState()
-  const item =
-    'flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.06em] text-muted transition-colors hover:bg-phosphor/10 hover:text-phosphor'
+  const item = MENU_ITEM
   const run =
     (fn: () => void): (() => void) =>
     () => {

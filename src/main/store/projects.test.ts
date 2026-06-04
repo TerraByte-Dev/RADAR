@@ -26,13 +26,18 @@ let root: string
 
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), 'radar-scan-'))
-  await writeFile(join(root, 'BLIP.md'), VALID.replace('name: Alpha', 'name: Root'))
-  await mkdir(join(root, 'sub', 'alpha'), { recursive: true })
-  await writeFile(join(root, 'sub', 'alpha', 'BLIP.md'), VALID)
+  // Two sibling projects.
+  await mkdir(join(root, 'alpha'), { recursive: true })
+  await writeFile(join(root, 'alpha', 'BLIP.md'), VALID) // name: Alpha
+  await mkdir(join(root, 'beta'), { recursive: true })
+  await writeFile(join(root, 'beta', 'BLIP.md'), VALID.replace('name: Alpha', 'name: Beta'))
+  // A nested BLIP.md *inside* a project — must NOT surface (a project is a boundary).
+  await mkdir(join(root, 'alpha', 'nested'), { recursive: true })
+  await writeFile(join(root, 'alpha', 'nested', 'BLIP.md'), VALID.replace('name: Alpha', 'name: Nested'))
   // An un-adopted repo (.git, no BLIP.md) → a ghost blip.
   await mkdir(join(root, 'ghostrepo', '.git'), { recursive: true })
   await writeFile(join(root, 'ghostrepo', 'CLAUDE.md'), '# ghost')
-  // These must be skipped by the scanner:
+  // Skipped by the scanner:
   await mkdir(join(root, 'node_modules', 'pkg'), { recursive: true })
   await writeFile(join(root, 'node_modules', 'pkg', 'BLIP.md'), VALID)
   await mkdir(join(root, '.hidden'), { recursive: true })
@@ -46,7 +51,12 @@ afterAll(async () => {
 describe('scanProjects', () => {
   it('finds tracked BLIP.md projects, skipping node_modules and dot-dirs, sorted by name', async () => {
     const tracked = (await scanProjects([root], 5)).filter((p) => !p.ghost).map((p) => p.name)
-    expect(tracked).toEqual(['Alpha', 'Root']) // sorted, ignored dirs excluded
+    expect(tracked).toEqual(['Alpha', 'Beta']) // sorted, ignored dirs excluded
+  })
+
+  it('stops at a project boundary — a BLIP.md nested inside a project never surfaces', async () => {
+    const names = (await scanProjects([root], 5)).map((p) => p.name)
+    expect(names).not.toContain('Nested')
   })
 
   it('surfaces an un-adopted repo as a ghost blip', async () => {
