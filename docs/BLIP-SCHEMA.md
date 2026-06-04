@@ -74,7 +74,7 @@ Whiteboard sketch lives in the bedroom.
 
 The body is parsed by top-level (`#`) headings. Three heading names are meaningful (case-insensitive); **every other section, and any text before the first heading, is preserved untouched.**
 
-- **`# Tasks`** — RADAR-owned GFM checklist (`- [ ]` / `- [x]`). Managed by the app and `radar-blip task add|done|undone|toggle|rm|edit`. The done ratio feeds the progress arc on the blip. A leading HTML comment is preserved.
+- **`# Tasks`** — RADAR-owned GFM checklist (`- [ ]` / `- [x]`). Managed by the app and `radar-blip task add|done|undone|toggle|rm|edit`. Open tasks become the **ship-markers** inside a project's fleet ring. A task may carry an optional trailing **`(due …)`** marker (e.g. `- [ ] Pay invoice (due 2026-07-01)` or `(due friday)`) — chrono-parsed by the app to tint its ship by urgency and surface it in the NOW overdue panel; the engine keeps the text verbatim. A leading HTML comment is preserved.
 - **`# Session log`** — append-only. `radar-blip handoff` adds a dated `## YYYY-MM-DD — <author>` entry and updates `last_session` + `next_action`. Prior entries are never edited or reordered.
 - **`# Notes`** — human-only. The engine and skills never rewrite this section or derive behavior from it.
 
@@ -100,4 +100,4 @@ The engine's serialize step is a **faithful round-trip**: parsing a file and ser
 - `status` → **styling**: `blocked` pulses, `shipped` dims, `archived` hidden from the active scope, parse-error = "signal lost".
 - `operation` → groups projects into a radar **sector** you can zoom into.
 - `radar_angle` → a **pinned bearing** (drag a blip to set it; clears to re-join the auto fan).
-- `# Tasks` done-ratio → a thin **progress arc** around the blip.
+- `# Tasks` → a project with tasks becomes a **fleet** (a hollow ring with one ship-marker per open task); ships tint by each task's `(due …)` urgency. A project with no tasks is a single solid blip.

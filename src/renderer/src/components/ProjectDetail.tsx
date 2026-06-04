@@ -4,6 +4,7 @@ import type { BlipStatus, Horizon, ProjectRecord } from '@shared/radar'
 import { BLIP_STATUSES, HORIZONS } from '@shared/radar'
 import { parseSessionLog } from '../lib/selectors'
 import { categoryColor, projectRelativeDeadline } from '../lib/projectRadar'
+import { taskDueDate, taskText, urgencyForDue } from '../lib/taskDue'
 import { useStore } from '../store/useStore'
 
 const PRIORITIES = [1, 2, 3, 4, 5]
@@ -220,33 +221,47 @@ export function ProjectDetail({
               Tasks · {done}/{p.tasks.length}
             </Label>
             <div className="flex flex-col">
-              {p.tasks.map((t, i) => (
-                <div key={i} className="group flex items-center gap-2 py-0.5">
-                  <button
-                    onClick={() => taskOp(p.blipPath, { action: 'toggle', ref: i })}
-                    aria-label="Toggle"
-                    className={`flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-sm border transition-all ${
-                      t.done ? 'border-phosphor bg-phosphor text-black' : 'border-faint hover:border-phosphor'
-                    }`}
-                  >
-                    {t.done && <Check size={10} strokeWidth={3} />}
-                  </button>
-                  <span className={`flex-1 font-mono text-[12px] ${t.done ? 'text-faint line-through' : 'text-ink'}`}>
-                    {t.text}
-                  </span>
-                  <button
-                    onClick={() => taskOp(p.blipPath, { action: 'rm', ref: i })}
-                    aria-label="Remove"
-                    className="shrink-0 text-faint opacity-0 transition-opacity hover:text-p1 group-hover:opacity-100"
-                  >
-                    <X size={11} />
-                  </button>
-                </div>
-              ))}
+              {p.tasks.map((t, i) => {
+                const due = t.done ? null : taskDueDate(t.text)
+                const urg = due ? urgencyForDue(due) : null
+                return (
+                  <div key={i} className="group flex items-center gap-2 py-0.5">
+                    <button
+                      onClick={() => taskOp(p.blipPath, { action: 'toggle', ref: i })}
+                      aria-label="Toggle"
+                      className={`flex h-[15px] w-[15px] shrink-0 items-center justify-center rounded-sm border transition-all ${
+                        t.done ? 'border-phosphor bg-phosphor text-black' : 'border-faint hover:border-phosphor'
+                      }`}
+                    >
+                      {t.done && <Check size={10} strokeWidth={3} />}
+                    </button>
+                    <span className={`flex-1 font-mono text-[12px] ${t.done ? 'text-faint line-through' : 'text-ink'}`}>
+                      {taskText(t.text)}
+                    </span>
+                    {due && (
+                      <span
+                        title={due}
+                        className={`shrink-0 font-mono text-[9px] uppercase tracking-[0.06em] ${
+                          urg === 'overdue' ? 'text-p1' : urg === 'soon' ? 'text-term-amber' : 'text-faint'
+                        }`}
+                      >
+                        {due.slice(5)}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => taskOp(p.blipPath, { action: 'rm', ref: i })}
+                      aria-label="Remove"
+                      className="shrink-0 text-faint opacity-0 transition-opacity hover:text-p1 group-hover:opacity-100"
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
             <input
               value={newTask}
-              placeholder="+ add task"
+              placeholder="+ add task — optional “(due fri)”"
               onChange={(e) => setNewTask(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && newTask.trim()) {

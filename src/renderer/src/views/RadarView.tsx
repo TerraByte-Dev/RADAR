@@ -10,7 +10,8 @@ import {
   Plus,
   RotateCcw,
   Sparkles,
-  Trash2
+  Trash2,
+  X
 } from 'lucide-react'
 import type { ProjectRecord } from '@shared/radar'
 import { ProjectDetail } from '../components/ProjectDetail'
@@ -33,8 +34,18 @@ import {
   projectRadiusFrac,
   projectRelativeDeadline
 } from '../lib/projectRadar'
+import { taskDueDate, taskText, taskUrgency } from '../lib/taskDue'
+import { daysFromToday } from '../lib/date'
 import { projectsOnRadar } from '../lib/selectors'
 import { useStore } from '../store/useStore'
+
+const AMBER = '#FFB000'
+
+interface OverdueData {
+  projects: ProjectRecord[]
+  tasks: { blipPath: string; name: string; text: string; due: string }[]
+  total: number
+}
 
 const ACCENT = '#00FF88'
 const SIGNAL_LOST = '#FF3030'
@@ -73,6 +84,14 @@ export function RadarView(): JSX.Element {
   const contacts = useMemo(() => projectsOnRadar(projects), [projects])
   const menuProject = menu ? projects.find((p) => p.blipPath === menu.blipPath) : undefined
 
+  const [overdueOpen, setOverdueOpen] = useState(false)
+  // A slow tick so per-task urgency / overdue refresh across the day (not per frame).
+  const [nowTick, setNowTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setNowTick((t) => t + 1), 120_000)
+    return () => clearInterval(id)
+  }, [])
+
   // Stable angular sector per category.
   const sectorByKey = useMemo(() => {
     const cats = [...new Set(contacts.map((p) => p.category || NO_CATEGORY))].sort()
@@ -81,9 +100,62 @@ export function RadarView(): JSX.Element {
     return map
   }, [contacts])
 
+  // Per-task urgency → a color for each open-task ship (computed off the rAF loop).
+  const shipColors = useMemo(() => {
+    const ref = new Date()
+    const map = new Map<string, string[]>()
+    for (const p of contacts) {
+      if (p.ghost || p.tasks.length === 0) continue
+      const base = isOverdueProject(p, ref) ? SIGNAL_LOST : categoryColor(p.category)
+      const colors = p.tasks
+        .filter((t) => !t.done)
+        .map((t) => {
+          const u = taskUrgency(t.text, ref)
+          return u === 'overdue' ? SIGNAL_LOST : u === 'soon' ? AMBER : base
+        })
+      map.set(p.blipPath, colors)
+    }
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contacts, nowTick])
+
+  // Everything on fire — overdue projects + overdue per-task dues — for the NOW expansion.
+  const overdue = useMemo<OverdueData>(() => {
+    const ref = new Date()
+    const projectsOverdue = contacts.filter((p) => !p.ghost && isOverdueProject(p, ref))
+    const tasks: OverdueData['tasks'] = []
+    for (const p of contacts) {
+      if (p.ghost) continue
+      for (const t of p.tasks) {
+        if (t.done) continue
+        const due = taskDueDate(t.text, ref)
+        if (due && (daysFromToday(due, ref) ?? 0) < 0) {
+          tasks.push({ blipPath: p.blipPath, name: p.name ?? 'Project', text: taskText(t.text), due })
+        }
+      }
+    }
+    return { projects: projectsOverdue, tasks, total: projectsOverdue.length + tasks.length }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contacts, nowTick])
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const stateRef = useRef({ contacts, sectorByKey, selectedBlip, hoveredId: null as string | null })
-  stateRef.current = { contacts, sectorByKey, selectedBlip, hoveredId: stateRef.current.hoveredId }
+  const centerHotRef = useRef(false)
+  const stateRef = useRef({
+    contacts,
+    sectorByKey,
+    selectedBlip,
+    hoveredId: null as string | null,
+    shipColors,
+    overdueCount: overdue.total
+  })
+  stateRef.current = {
+    contacts,
+    sectorByKey,
+    selectedBlip,
+    hoveredId: stateRef.current.hoveredId,
+    shipColors,
+    overdueCount: overdue.total
+  }
 
   const posRef = useRef<Map<string, { x: number; y: number; r: number }>>(new Map())
   const layoutCacheRef = useRef<{ sig: string; map: Map<string, number> }>({ sig: '', map: new Map() })
@@ -175,7 +247,8 @@ export function RadarView(): JSX.Element {
       last = now
       if (!reduce) sweep += (360 / 7) * dt
       const ref = new Date()
-      const { contacts, sectorByKey, selectedBlip, hoveredId } = stateRef.current
+      const { contacts, sectorByKey, selectedBlip, hoveredId, shipColors, overdueCount } =
+        stateRef.current
 
       ctx!.clearRect(0, 0, W, H)
       if (R < 1) {
@@ -197,6 +270,21 @@ export function RadarView(): JSX.Element {
       ctx!.beginPath()
       ctx!.arc(cx, cy, R, 0, 7)
       ctx!.clip()
+
+      // category sectors — a faint colored wedge per category (the angular "compass")
+      if (sectorByKey.size > 1) {
+        const half = 360 / sectorByKey.size / 2
+        const RAD = Math.PI / 180
+        for (const [cat, base] of sectorByKey) {
+          if (cat === NO_CATEGORY) continue
+          ctx!.beginPath()
+          ctx!.moveTo(cx, cy)
+          ctx!.arc(cx, cy, R, (base - half - 90) * RAD, (base + half - 90) * RAD)
+          ctx!.closePath()
+          ctx!.fillStyle = hexA(categoryColor(cat), 0.045)
+          ctx!.fill()
+        }
+      }
 
       for (let i = 1; i <= 6; i++) {
         ctx!.beginPath()
@@ -279,6 +367,21 @@ export function RadarView(): JSX.Element {
         ctx!.fillRect(x - w / 2, y - 7, w, 13)
         ctx!.fillStyle = ring.color
         ctx!.fillText(ring.label, x, y)
+      }
+
+      // category labels around the rim — the angular compass
+      if (sectorByKey.size > 1) {
+        ctx!.font = '9px "IBM Plex Mono", ui-monospace, monospace'
+        for (const [cat, base] of sectorByKey) {
+          if (cat === NO_CATEGORY) continue
+          const [clx, cly] = pt(R - 12, base)
+          const label = cat.toUpperCase()
+          const w = ctx!.measureText(label).width + 6
+          ctx!.fillStyle = 'rgba(0,0,0,.7)'
+          ctx!.fillRect(clx - w / 2, cly - 6, w, 12)
+          ctx!.fillStyle = hexA(categoryColor(cat), 0.92)
+          ctx!.fillText(label, clx, cly)
+        }
       }
 
       const drag = dragRef.current
@@ -389,13 +492,15 @@ export function RadarView(): JSX.Element {
             ctx!.stroke()
             ctx!.shadowBlur = 0
             const m = Math.min(openTasks, 7)
+            const ships = shipColors.get(proj.blipPath) ?? []
             const rin = size * 0.46
             for (let i = 0; i < m; i++) {
+              const sc = ships[i] ?? color // overdue=red · soon=amber · else category
               if (m === 1) {
-                drawShip(ctx!, x, y, 2.7, color)
+                drawShip(ctx!, x, y, 2.7, sc)
               } else {
                 const a = (i / m) * Math.PI * 2 - Math.PI / 2
-                drawShip(ctx!, x + Math.cos(a) * rin, y + Math.sin(a) * rin, 2.5, color)
+                drawShip(ctx!, x + Math.cos(a) * rin, y + Math.sin(a) * rin, 2.5, sc)
               }
             }
           } else {
@@ -453,21 +558,49 @@ export function RadarView(): JSX.Element {
       }
       posRef.current = positions
 
-      if (!reduce) {
-        const pr = 9 + Math.sin(now / 600) * 3
+      // center marker — pulses red and shows a count when overdue items exist; hover to expand.
+      const centerHot = centerHotRef.current && overdueCount > 0
+      if (overdueCount > 0) {
+        const pulse = reduce ? 0.5 : 0.35 + Math.abs(Math.sin(now / 380)) * 0.45
         ctx!.beginPath()
-        ctx!.arc(cx, cy, pr, 0, 7)
-        ctx!.strokeStyle = 'rgba(0,255,136,.25)'
-        ctx!.lineWidth = 1
+        ctx!.arc(cx, cy, centerHot ? 16 : 12, 0, 7)
+        ctx!.strokeStyle = hexA(SIGNAL_LOST, centerHot ? 0.95 : pulse)
+        ctx!.lineWidth = centerHot ? 2 : 1.4
         ctx!.stroke()
+        ctx!.beginPath()
+        ctx!.arc(cx, cy, 3.6, 0, 7)
+        ctx!.fillStyle = SIGNAL_LOST
+        ctx!.shadowColor = SIGNAL_LOST
+        ctx!.shadowBlur = 12
+        ctx!.fill()
+        ctx!.shadowBlur = 0
+        ctx!.textAlign = 'center'
+        ctx!.textBaseline = 'middle'
+        ctx!.fillStyle = hexA(SIGNAL_LOST, 0.95)
+        ctx!.font = 'bold 10px "IBM Plex Mono", ui-monospace, monospace'
+        ctx!.fillText(`${overdueCount} OVERDUE`, cx, cy - 22)
+        if (centerHot) {
+          ctx!.fillStyle = hexA(SIGNAL_LOST, 0.7)
+          ctx!.font = '8px "IBM Plex Mono", ui-monospace, monospace'
+          ctx!.fillText('CLICK TO EXPAND', cx, cy + 24)
+        }
+      } else {
+        if (!reduce) {
+          const pr = 9 + Math.sin(now / 600) * 3
+          ctx!.beginPath()
+          ctx!.arc(cx, cy, pr, 0, 7)
+          ctx!.strokeStyle = 'rgba(0,255,136,.25)'
+          ctx!.lineWidth = 1
+          ctx!.stroke()
+        }
+        ctx!.beginPath()
+        ctx!.arc(cx, cy, 3.2, 0, 7)
+        ctx!.fillStyle = ACCENT
+        ctx!.shadowColor = ACCENT
+        ctx!.shadowBlur = 10
+        ctx!.fill()
+        ctx!.shadowBlur = 0
       }
-      ctx!.beginPath()
-      ctx!.arc(cx, cy, 3.2, 0, 7)
-      ctx!.fillStyle = ACCENT
-      ctx!.shadowColor = ACCENT
-      ctx!.shadowBlur = 10
-      ctx!.fill()
-      ctx!.shadowBlur = 0
 
       if (!contacts.length) {
         ctx!.fillStyle = 'rgba(155,245,184,.45)'
@@ -560,10 +693,12 @@ export function RadarView(): JSX.Element {
           onMouseMove={(e) => {
             const { x, y } = toCanvas(e)
             mouseRef.current = { x, y, inside: true }
+            const { cx, cy } = geomRef.current
+            centerHotRef.current = Math.hypot(x - cx, y - cy) < 16
             const drag = dragRef.current
             if (drag) {
               if (Math.hypot(x - drag.startX, y - drag.startY) > 4) drag.moved = true
-            } else if (!selectedBlip) {
+            } else if (!selectedBlip && !centerHotRef.current) {
               setHovered(hitTest(x, y))
             }
           }}
@@ -572,6 +707,13 @@ export function RadarView(): JSX.Element {
             const drag = dragRef.current
             dragRef.current = null
             if (!drag) {
+              // Click the NOW center (with overdue items) → expand the overdue list.
+              const { x, y } = toCanvas(e)
+              const { cx, cy } = geomRef.current
+              if (Math.hypot(x - cx, y - cy) < 16 && overdue.total > 0) {
+                setOverdueOpen(true)
+                return
+              }
               setSelectedBlip(null)
               return
             }
@@ -637,7 +779,85 @@ export function RadarView(): JSX.Element {
       {menu && !menu.blipPath && (
         <RadarBgMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} />
       )}
+
+      {overdueOpen && (
+        <OverduePanel
+          overdue={overdue}
+          onClose={() => setOverdueOpen(false)}
+          onSelect={(bp) => {
+            setSelectedBlip(bp)
+            setOverdueOpen(false)
+          }}
+        />
+      )}
     </main>
+  )
+}
+
+/** The NOW expansion — every overdue project + overdue task, one click from the center. */
+function OverduePanel({
+  overdue,
+  onClose,
+  onSelect
+}: {
+  overdue: OverdueData
+  onClose: () => void
+  onSelect: (blipPath: string) => void
+}): JSX.Element {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-[1px]" onClick={onClose} />
+      <div className="fixed left-1/2 top-1/2 z-[61] w-[min(440px,90vw)] -translate-x-1/2 -translate-y-1/2 border border-p1/60 bg-panel shadow-glow-strong">
+        <div className="flex items-center justify-between border-b border-rule bg-black/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.16em] text-p1">
+          <span>● Overdue — {overdue.total}</span>
+          <button onClick={onClose} aria-label="Close" className="metal-key h-6 w-6">
+            <X size={12} />
+          </button>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto px-2 py-2">
+          {overdue.total === 0 && (
+            <div className="px-2 py-5 text-center font-mono text-[11px] text-faint">
+              Nothing overdue. Clear skies.
+            </div>
+          )}
+          {overdue.projects.map((p) => (
+            <button
+              key={p.blipPath}
+              onClick={() => onSelect(p.blipPath)}
+              className="flex w-full items-center gap-2 px-2 py-1.5 text-left font-mono text-[12px] text-ink transition-colors hover:bg-phosphor/[0.06]"
+            >
+              <span className="h-2 w-2 shrink-0 rounded-full bg-p1" />
+              <span className="flex-1 truncate">{p.name ?? 'Project'}</span>
+              <span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-p1">
+                {projectRelativeDeadline(p)}
+              </span>
+            </button>
+          ))}
+          {overdue.tasks.map((t, i) => (
+            <button
+              key={`${t.blipPath}-${i}`}
+              onClick={() => onSelect(t.blipPath)}
+              className="flex w-full items-center gap-2 px-2 py-1.5 text-left font-mono text-[12px] text-muted transition-colors hover:bg-phosphor/[0.06]"
+            >
+              <span className="ml-1 h-1.5 w-1.5 shrink-0 rotate-45 bg-p1" />
+              <span className="min-w-0 flex-1 truncate">
+                {t.text}
+                <span className="ml-1.5 text-faint">— {t.name}</span>
+              </span>
+              <span className="shrink-0 text-[10px] text-p1">{t.due}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
   )
 }
 

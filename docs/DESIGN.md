@@ -93,38 +93,39 @@ Corners are squared (`borderRadius` scale flattened to 2–4px); dots/LEDs keep 
 
 ## Radar
 
-The Radar view (`views/RadarView.tsx`) is drawn on a `<canvas>` with a `requestAnimationFrame`
-loop, so its colors are hardcoded hex/rgba rather than Tailwind tokens — but they mirror the
-palette: accent `#00FF88`, and the labeled time-rings NOW `#FF6B6B` / 1 WEEK `#FFB000` / 1 MONTH
-`#7CFF6B` / 1 QUARTER `#00E5FF` / SOMEDAY `#5fd0c4`. Pure red `#FF3030` is reserved for overdue
-blips; other blips take their project's color.
+The Radar view (`views/RadarView.tsx`) is a `<canvas>` + `requestAnimationFrame` loop that plots
+**projects** (one per `BLIP.md`). Pure math lives in `lib/radar.ts` (generic time‑scale, unit‑tested),
+`lib/projectRadar.ts` (project→radar mapping), and `lib/taskDue.ts` (per‑task `(due …)` parsing).
+Colors mirror the palette: accent `#00FF88`, time‑rings NOW/1 WEEK/1 MONTH/1 QUARTER/SOMEDAY;
+`#FF3030` for overdue, `#FFB000` for "due soon", the category color otherwise.
 
-A blip's **distance from center is a continuous, log-compressed time-to-deadline** (`lib/radar.ts`:
-`daysUntilDue` → `radiusFracForDays`), so near-term tasks spread out and far-future ones compress
-toward the rim; the labeled rings are just gridlines on that axis. Its **angle** defaults to the
-project's sector, but blips are **freely draggable around the dial**: a drop pins a per-task
-`radarAngle` (`angleFromPoint`) — a purely visual override that does **not** reassign the project —
-and reschedules by radius. Reschedule fires **only when the drop lands in a different day-bucket**
-than the blip's current radius (`daysFromFrac(frac)` vs `daysFromFrac(blipRadiusFrac(task))`), so a
-pure angular nudge never shifts the deadline or adds a phantom `rescheduled` to the activity timeline
-— robust for timed dues too, whose fractional radius rounds to a day. Dropping a blip essentially on
-the bullseye (within `MIN_PIN_PX`) **un-pins** it instead of recording a meaningless bearing.
+**Distance from center** is a continuous, log‑compressed time‑to‑deadline (`projectRadiusFrac` →
+`radiusFracForDays`): a hard `deadline` drives the exact radius, falling back to the fuzzy `horizon`
+band (today/week/someday). **Angle** is the project's **category sector** (`sectorBase`), drag‑pinnable
+to a per‑project `radar_angle` (visual only — never reassigns the category). **Size** = priority;
+same‑sector/same‑day blips **auto‑fan** (`layoutBlipAngles`, fanning *around* pinned obstacles, cached
+on a data signature and recomputed live only mid‑drag).
 
-`layoutBlipAngles` resolves all angles: same-project/same-deadline blips **auto-fan** apart only where
-they'd overlap, the arc widening near the crowded center (small circumference → more degrees per pixel)
-and capped so neighbouring wedges never collide (lone-blip jitter is wedge-bounded too). Pinned blips
-aren't merely "manual wins" — they're **fixed obstacles** the auto blips fan *around* (slot-based
-placement reserves a pinned sibling's slot), so an auto blip never lands on a pinned one. Clustering
-keys on `blipLayoutFrac` (whole-day buckets, not the live timed radius), so same-day blips fan together
-and the layout doesn't twitch as a timed blip's drawn radius drifts. The canvas **caches** this layout
-on a data signature (recompute on data / day-rollover / resize, not every frame) and only recomputes
-live *while a blip is dragged* — feeding the dragged blip in as a live obstacle so its siblings make
-room under the cursor and hand off smoothly on release.
+**Fleets.** A project with tasks is a **hollow ring** holding one small "ship" marker per open task
+(the ring grows with open‑task count); a project with no tasks is a single solid blip. Tasks may carry
+an optional `(due …)` marker (chrono‑parsed) and ships tint by urgency (overdue = red, ≤2 days = amber,
+else category). So "due someday *and* tomorrow" reads naturally — the project rings by its own deadline,
+with a bright ship for the urgent task inside.
 
-Clear a pinned angle by **right-clicking** the blip (primary-button drags reschedule; the secondary
-button only resets), via the selected-panel "reset position", the header "reset layout", or the
-command palette. The pure math is unit-tested; the canvas honors `prefers-reduced-motion` (freezes the
-sweep, pings, and pulses). Task-blip adaptation of the TerraByte `RADAR` project.
+**Category compass.** Each category gets a faint colored wedge + a rim label, so *direction* around the
+dial is meaningful (organize by category, not just distance).
+
+**Interactive NOW center.** When anything is overdue the bullseye pulses red with a count; hover
+brightens it and a click expands the **overdue panel** — every overdue project + overdue task, one
+click from selecting it.
+
+**Drag** reschedules the `deadline` only when the drop changes day‑bucket (a pure angular nudge just
+re‑pins; a near‑center drop un‑pins). **Right‑click** a blip for its menu (adopt/dismiss a ghost;
+open/reset/archive/delete a project), or empty space to add a project / capture a task. **Status
+visuals**: blocked pulses, shipped dims, archived hidden, a parse error is a dashed "signal‑lost" ring,
+and an un‑adopted repo is a faint dashed **ghost**. Per‑task parsing + overdue derivation run in memos
+off the rAF loop (refreshed on a slow tick); the canvas honors `prefers-reduced-motion`. Ported and
+grown from the TerraByte `RADAR` project.
 
 ## Window chrome
 
