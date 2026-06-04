@@ -5,17 +5,23 @@
   "main": "./out/main/index.js",
   "author": "TerraByte-Dev",
   "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "dev": "npm run build:core && electron-vite dev",
+    "build": "npm run build:core && electron-vite build",
     "start": "electron-vite preview",
-    "package": "electron-vite build && electron-builder",
+    "package": "npm run build:core && electron-vite build && electron-builder",
+    "build:core": "npm run build --workspace radar-blip",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "vitest run"
+    "test": "vitest run && npm run test:core",
+    "test:core": "npm test --workspace radar-blip"
   },
   "dependencies": {
+    "radar-blip": "*",
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/share-tech-mono": "^5.2.7",
     "@fontsource/vt323": "^5.2.7",
