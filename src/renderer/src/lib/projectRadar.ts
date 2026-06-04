@@ -55,6 +55,23 @@ export function deadlineForFrac(frac: number): string | null {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+/**
+ * Translate a drop radius into the schedule change. A drop in the **someday band** clears the
+ * deadline AND pins `horizon: someday` — so the blip actually stays at the rim instead of falling
+ * back to a stale horizon band (the old bug where dropping a `today`/`week` project on the rim
+ * snapped it back inward). Any nearer drop sets an exact `deadline` (which overrides the horizon).
+ */
+export function scheduleForDrop(frac: number): { deadline: string | null; horizon?: Horizon } {
+  const days = daysFromFrac(frac)
+  if (days === null) return { deadline: null, horizon: 'someday' }
+  return { deadline: deadlineForFrac(frac) }
+}
+
+/** The whole-day bucket a project currently occupies on the radar (for drop change-detection). */
+export function currentDayBucket(p: ProjectRecord, ref: Date = new Date()): number | null {
+  return daysFromFrac(projectRadiusFrac(p, ref))
+}
+
 /** True only for a real, past deadline (a fuzzy horizon never goes "overdue"). */
 export function isOverdueProject(p: ProjectRecord, ref: Date = new Date()): boolean {
   if (!p.deadline) return false

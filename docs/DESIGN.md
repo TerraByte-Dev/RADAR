@@ -115,12 +115,15 @@ with a bright ship for the urgent task inside.
 **Category compass.** Each category gets a faint colored wedge + a rim label, so *direction* around the
 dial is meaningful (organize by category, not just distance).
 
-**Interactive NOW center.** When anything is overdue the bullseye pulses red with a count; hover
-brightens it and a click expands the **overdue panel** — every overdue project + overdue task, one
-click from selecting it.
+**Interactive NOW center.** A real DOM hit-target sits over the bullseye (so it never fights the
+overdue blips that pile up there). When anything needs attention the center pulses — **red** for
+overdue, **amber** for neglected-only — with a count; clicking expands the **attention panel**:
+overdue projects + overdue tasks + neglected projects, one click from selecting each.
 
-**Drag** reschedules the `deadline` only when the drop changes day‑bucket (a pure angular nudge just
-re‑pins; a near‑center drop un‑pins). **Right‑click** a blip for its menu (adopt/dismiss a ghost;
+**Drag** reschedules via the tested `scheduleForDrop` only when the drop changes day‑bucket (a pure
+angular nudge just re‑pins; a near‑center drop un‑pins). A drop in the **someday band** clears the
+deadline *and* pins `horizon: someday`, so the blip stays at the rim instead of snapping back to a
+stale horizon band — placements land where you put them. **Right‑click** a blip for its menu (adopt/dismiss a ghost;
 open/reset/archive/delete a project), or empty space to add a project / capture a task. **Status
 visuals**: blocked pulses, shipped dims, archived hidden, a parse error is a dashed "signal‑lost" ring,
 and an un‑adopted repo is a faint dashed **ghost**. Per‑task parsing + overdue derivation run in memos

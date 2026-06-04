@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest'
 import type { ProjectRecord } from '@shared/radar'
 import {
   categoryColor,
+  currentDayBucket,
   daysUntilDeadline,
   deadlineForFrac,
   isOverdueProject,
   prioSize,
   projectRadiusFrac,
   projectRelativeDeadline,
+  scheduleForDrop,
   taskRatio
 } from './projectRadar'
 
@@ -57,6 +59,27 @@ describe('deadlineForFrac', () => {
     const near = deadlineForFrac(0.05)
     expect(near).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     expect(deadlineForFrac(0.4)! >= near!).toBe(true) // larger radius → later (or equal) date
+  })
+})
+
+describe('scheduleForDrop', () => {
+  it('a someday-band drop clears the deadline and pins horizon someday (stays at the rim)', () => {
+    expect(scheduleForDrop(0.97)).toEqual({ deadline: null, horizon: 'someday' })
+    expect(scheduleForDrop(0.95)).toEqual({ deadline: null, horizon: 'someday' })
+  })
+
+  it('a nearer drop sets an exact deadline and leaves horizon untouched', () => {
+    const s = scheduleForDrop(0.4)
+    expect(s.deadline).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(s.horizon).toBeUndefined()
+  })
+})
+
+describe('currentDayBucket', () => {
+  it('round-trips the radius back to the day bucket (null for someday)', () => {
+    expect(currentDayBucket(p({ horizon: 'someday' }), REF)).toBeNull()
+    expect(currentDayBucket(p({ deadline: '2026-06-10' }), REF)).toBe(7) // REF = 2026-06-03
+    expect(currentDayBucket(p({ deadline: '2026-06-03' }), REF)).toBe(0)
   })
 })
 
