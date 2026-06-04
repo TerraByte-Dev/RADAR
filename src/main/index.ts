@@ -91,6 +91,14 @@ app.whenReady().then(async () => {
   stopRadar = registerRadarHandlers(() => mainWindow)
   registerGlobalQuickAdd()
 
+  // Auto-update — packaged builds only; a silent no-op until a release is published
+  // (see electron-builder.yml `publish` + docs/RELEASING.md).
+  if (app.isPackaged) {
+    import('electron-updater')
+      .then(({ autoUpdater }) => autoUpdater.checkForUpdatesAndNotify())
+      .catch(() => {})
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })

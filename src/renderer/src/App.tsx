@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { BootSplash } from './components/BootSplash'
 import { CommandPalette } from './components/CommandPalette'
 import { CrtOverlay } from './components/CrtOverlay'
+import { Onboarding } from './components/Onboarding'
 import { QuickAdd } from './components/QuickAdd'
 import { Sidebar } from './components/Sidebar'
 import { TitleBar } from './components/TitleBar'
@@ -23,7 +24,13 @@ export default function App(): JSX.Element {
   const loaded = useStore((s) => s.loaded)
   const viewKind = useStore((s) => s.view.kind)
   const bootDone = useStore((s) => s.bootDone)
+  const onboarded = useStore((s) => s.onboarded)
+  const config = useStore((s) => s.config)
   const { init, setQuickAddOpen } = useStore.getState()
+
+  // First run: no workspace root beyond the app-managed default has been added yet.
+  const needsOnboarding =
+    !!config && config.roots.filter((r) => r !== config.workspace).length === 0
 
   useKeyboard()
 
@@ -53,6 +60,7 @@ export default function App(): JSX.Element {
       <QuickAdd />
       <CommandPalette />
       <CrtOverlay />
+      {loaded && bootDone && !onboarded && needsOnboarding && <Onboarding />}
       {!bootDone && <BootSplash />}
     </div>
   )

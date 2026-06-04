@@ -53,6 +53,15 @@ function bootAlreadySeen(): boolean {
   }
 }
 
+/** First-run onboarding is shown once, then dismissed for good. */
+function onboardedAlready(): boolean {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('radar.onboarded') === '1'
+  } catch {
+    return false
+  }
+}
+
 /** Replace (or append) a project record by its blipPath. */
 function replace(list: ProjectRecord[], rec: ProjectRecord): ProjectRecord[] {
   const i = list.findIndex((p) => p.blipPath === rec.blipPath)
@@ -82,6 +91,7 @@ interface StoreState {
   crtEffects: boolean
   showCompleted: boolean
   bootDone: boolean
+  onboarded: boolean
 
   init(): Promise<void>
   setView(view: View): void
@@ -97,6 +107,7 @@ interface StoreState {
   toggleCrt(): void
   toggleShowCompleted(): void
   finishBoot(): void
+  finishOnboarding(): void
 
   // Project (BLIP.md) mutations — every write goes through the engine via IPC.
   setFields(blipPath: string, patch: BlipFieldPatch): Promise<void>
@@ -132,6 +143,7 @@ export const useStore = create<StoreState>((set, get) => ({
   crtEffects: loadSettings().crtEffects,
   showCompleted: loadSettings().showCompleted,
   bootDone: bootAlreadySeen(),
+  onboarded: onboardedAlready(),
 
   async init() {
     const [projects, config] = await Promise.all([window.radar.scan(), window.radar.getConfig()])
@@ -172,6 +184,14 @@ export const useStore = create<StoreState>((set, get) => ({
       /* ignore */
     }
     set({ bootDone: true })
+  },
+  finishOnboarding: () => {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('radar.onboarded', '1')
+    } catch {
+      /* ignore */
+    }
+    set({ onboarded: true })
   },
 
   async setFields(blipPath, patch) {

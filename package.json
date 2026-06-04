@@ -1,7 +1,7 @@
 {
-  "name": "todoplus",
+  "name": "radar",
   "version": "0.1.0",
-  "description": "TerraByte-skinned, local-only desktop to-do app: a task radar, calendar, natural-language capture, and full keyboard control.",
+  "description": "TerraByte RADAR — a personal project radar. Every project is a blip fed by a per-project BLIP.md your AI coding agent keeps current via /blip.",
   "main": "./out/main/index.js",
   "author": "TerraByte-Dev",
   "license": "MIT",
@@ -23,6 +23,7 @@
   "dependencies": {
     "radar-blip": "*",
     "chokidar": "^3.6.0",
+    "electron-updater": "^6.3.9",
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/share-tech-mono": "^5.2.7",
     "@fontsource/vt323": "^5.2.7",
