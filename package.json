@@ -16,12 +16,13 @@
     "build:core": "npm run build --workspace radar-blip",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "test": "vitest run && npm run test:core",
-    "test:core": "npm test --workspace radar-blip"
+    "typecheck": "npm run build:core && npm run typecheck:node && npm run typecheck:web",
+    "test": "npm run build:core && vitest run && vitest run --root packages/blip-core",
+    "test:core": "npm run build:core && vitest run --root packages/blip-core"
   },
   "dependencies": {
     "radar-blip": "*",
+    "chokidar": "^3.6.0",
     "@fontsource/ibm-plex-mono": "^5.2.7",
     "@fontsource/share-tech-mono": "^5.2.7",
     "@fontsource/vt323": "^5.2.7",

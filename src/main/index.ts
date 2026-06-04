@@ -2,11 +2,13 @@ import { app, BrowserWindow, globalShortcut, ipcMain, session, shell } from 'ele
 import { join } from 'node:path'
 import { IPC } from '../shared/types'
 import { registerIpcHandlers } from './ipc/handlers'
+import { registerRadarHandlers } from './ipc/radar'
 import { Repository } from './store/repository'
 
 const isDev = !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
+let stopRadar: (() => void) | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -85,6 +87,8 @@ app.whenReady().then(async () => {
   registerWindowControls()
   applyProdCsp()
   createWindow()
+  // RADAR project model (BLIP.md): scan/watch/write + live push to the renderer.
+  stopRadar = registerRadarHandlers(() => mainWindow)
   registerGlobalQuickAdd()
 
   app.on('activate', () => {
@@ -98,4 +102,5 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  stopRadar?.()
 })

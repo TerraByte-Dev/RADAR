@@ -8,6 +8,14 @@ import type {
   Task,
   TodoApi
 } from '../shared/types'
+import type {
+  BlipFieldPatch,
+  BlipTaskOp,
+  InitProjectOptions,
+  ProjectRecord,
+  RadarApi,
+  RadarConfig
+} from '../shared/radar'
 
 const api: TodoApi = {
   load: (): Promise<AppData> => ipcRenderer.invoke(IPC.load),
@@ -33,4 +41,34 @@ const api: TodoApi = {
   closeWindow: (): void => ipcRenderer.send(IPC.closeWindow)
 }
 
+const radar: RadarApi = {
+  scan: (): Promise<ProjectRecord[]> => ipcRenderer.invoke(IPC.radarScan),
+  readProject: (blipPath: string): Promise<ProjectRecord> =>
+    ipcRenderer.invoke(IPC.radarRead, blipPath),
+  setFields: (blipPath: string, patch: BlipFieldPatch): Promise<ProjectRecord> =>
+    ipcRenderer.invoke(IPC.radarSetFields, blipPath, patch),
+  task: (blipPath: string, op: BlipTaskOp): Promise<ProjectRecord> =>
+    ipcRenderer.invoke(IPC.radarTask, blipPath, op),
+  handoff: (blipPath: string, lines: string[], next?: string, author?: string): Promise<ProjectRecord> =>
+    ipcRenderer.invoke(IPC.radarHandoff, blipPath, lines, next, author),
+  initProject: (dir: string, opts: InitProjectOptions): Promise<ProjectRecord> =>
+    ipcRenderer.invoke(IPC.radarInit, dir, opts),
+  inboxAddTask: (text: string): Promise<ProjectRecord> =>
+    ipcRenderer.invoke(IPC.radarInboxAdd, text),
+  getConfig: (): Promise<RadarConfig> => ipcRenderer.invoke(IPC.radarConfigGet),
+  addRoot: (root: string): Promise<RadarConfig> => ipcRenderer.invoke(IPC.radarAddRoot, root),
+  removeRoot: (root: string): Promise<RadarConfig> => ipcRenderer.invoke(IPC.radarRemoveRoot, root),
+  pickFolder: (): Promise<string | null> => ipcRenderer.invoke(IPC.radarPickFolder),
+  openPath: (path: string): Promise<void> => ipcRenderer.invoke(IPC.radarOpenPath, path),
+  reveal: (path: string): Promise<void> => ipcRenderer.invoke(IPC.radarReveal, path),
+  openInEditor: (path: string): Promise<{ ok: boolean; reason?: string }> =>
+    ipcRenderer.invoke(IPC.radarOpenInEditor, path),
+  onProjectsChanged: (cb: (projects: ProjectRecord[]) => void): (() => void) => {
+    const listener = (_e: unknown, projects: ProjectRecord[]): void => cb(projects)
+    ipcRenderer.on(IPC.radarProjectsChanged, listener)
+    return () => ipcRenderer.removeListener(IPC.radarProjectsChanged, listener)
+  }
+}
+
 contextBridge.exposeInMainWorld('api', api)
+contextBridge.exposeInMainWorld('radar', radar)

@@ -111,7 +111,24 @@ export const IPC = {
   // Frameless-window chrome (custom title bar controls).
   minimizeWindow: 'window:minimize',
   maximizeWindow: 'window:maximize',
-  closeWindow: 'window:close'
+  closeWindow: 'window:close',
+  // RADAR / BLIP.md project model (window.radar).
+  radarScan: 'radar:scan',
+  radarRead: 'radar:read',
+  radarSetFields: 'radar:set-fields',
+  radarTask: 'radar:task',
+  radarHandoff: 'radar:handoff',
+  radarInit: 'radar:init',
+  radarInboxAdd: 'radar:inbox-add',
+  radarConfigGet: 'radar:config-get',
+  radarAddRoot: 'radar:add-root',
+  radarRemoveRoot: 'radar:remove-root',
+  radarPickFolder: 'radar:pick-folder',
+  radarOpenPath: 'radar:open-path',
+  radarReveal: 'radar:reveal',
+  radarOpenInEditor: 'radar:open-in-editor',
+  /** Push channel: main → renderer when the watcher sees BLIP.md changes. */
+  radarProjectsChanged: 'radar:projects-changed'
 } as const
 
 /** The typed surface exposed on `window.api` by the preload script. */
