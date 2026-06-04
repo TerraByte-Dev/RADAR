@@ -8,6 +8,8 @@ export interface CreateBlipOptions {
   category?: string;
   status?: Status;
   next_action?: string;
+  deadline?: string;
+  operation?: string;
 }
 
 function todayLocal(): string {
@@ -41,6 +43,8 @@ export function createBlip(opts: CreateBlipOptions): Blip {
   blip.setField('category', opts.category ?? '');
   blip.setField('status', opts.status ?? 'active');
   if (opts.next_action) blip.setField('next_action', opts.next_action);
+  if (opts.deadline) blip.setField('deadline', opts.deadline);
+  if (opts.operation) blip.setField('operation', opts.operation);
   blip.setField('created', todayLocal());
   return blip;
 }

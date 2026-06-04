@@ -153,6 +153,75 @@ describe('createBlip', () => {
     expect(b.toString()).toContain('# Notes');
     expect(b.toString()).toMatch(/created: \d{4}-\d{2}-\d{2}/);
   });
+
+  it('writes deadline + operation when provided', () => {
+    const m = createBlip({ name: 'Bar', deadline: '2026-07-01', operation: 'TerraByte' }).toReadModel();
+    expect(m.deadline).toBe('2026-07-01');
+    expect(m.operation).toBe('TerraByte');
+  });
+});
+
+describe('new radar fields (deadline / radar_angle / operation)', () => {
+  const WITH_FIELDS = `---
+name: RADAR
+horizon: week
+priority: 2
+category: Product
+status: active
+deadline: 2026-07-01
+radar_angle: 123.5
+operation: TerraByte
+repo: TerraByte-Dev/RADAR
+---
+
+# Notes
+keep me
+`;
+
+  it('surfaces the new fields on the read model and excludes them from unknown', () => {
+    const m = Blip.parse(WITH_FIELDS).toReadModel();
+    expect(m.deadline).toBe('2026-07-01');
+    expect(m.radar_angle).toBe(123.5);
+    expect(m.operation).toBe('TerraByte');
+    // Managed keys never leak into `unknown`; a real unknown key still does.
+    expect(m.unknown).not.toHaveProperty('deadline');
+    expect(m.unknown).not.toHaveProperty('radar_angle');
+    expect(m.unknown).not.toHaveProperty('operation');
+    expect(m.unknown.repo).toBe('TerraByte-Dev/RADAR');
+  });
+
+  it('round-trips a document carrying the new fields byte-for-byte', () => {
+    expect(Blip.parse(WITH_FIELDS).toString()).toBe(WITH_FIELDS);
+  });
+
+  it('normalizes radar_angle into [0, 360) on read', () => {
+    expect(Blip.parse(`---\nradar_angle: 400\n---\n`).fields.radar_angle).toBe(40);
+    expect(Blip.parse(`---\nradar_angle: -10\n---\n`).fields.radar_angle).toBe(350);
+    // A non-numeric angle is dropped rather than surfaced as NaN.
+    expect(Blip.parse(`---\nradar_angle: nope\n---\n`).fields.radar_angle).toBeUndefined();
+  });
+
+  it('sets and clears the deadline and the radar angle via the engine', () => {
+    const b = Blip.parse(WITH_FIELDS);
+    b.setDeadline('2026-08-15').setRadarAngle(720); // 720 → 0
+    expect(b.fields.deadline).toBe('2026-08-15');
+    expect(b.fields.radar_angle).toBe(0);
+
+    b.setDeadline(null).setRadarAngle(null);
+    expect(b.fields.deadline).toBeUndefined();
+    expect(b.fields.radar_angle).toBeUndefined();
+    const out = b.toString();
+    expect(out).not.toContain('deadline:');
+    expect(out).not.toContain('radar_angle:');
+    expect(out).toContain('# Notes\nkeep me'); // unmanaged section still intact
+  });
+
+  it('merges radar_angle (the app write path) without touching other keys', () => {
+    const out = Blip.parse(WITH_FIELDS).merge({ radar_angle: 270 }).toString();
+    expect(out).toContain('radar_angle: 270');
+    expect(out).toContain('operation: TerraByte');
+    expect(out).toContain('repo: TerraByte-Dev/RADAR');
+  });
 });
 
 describe('author detection', () => {
@@ -192,6 +261,42 @@ describe('skills install (CLI)', () => {
       expect(readFileSync(claudeDest, 'utf8')).toBe(srcClaude);
     } finally {
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('CLI: init + show round-trip with the new radar fields', () => {
+  const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
+  const run = (args: string[], dir: string): string =>
+    execFileSync(process.execPath, [CLI, ...args, '--path', dir], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+  it('inits with deadline + operation and reads them back via show --json', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'radar-cli-'));
+    try {
+      run(['init', '--name', 'Demo', '--deadline', '2026-07-01', '--operation', 'TerraByte', '--priority', '1', '--category', 'Product'], dir);
+      const json = JSON.parse(run(['show', '--json'], dir));
+      expect(json).toMatchObject({
+        name: 'Demo',
+        deadline: '2026-07-01',
+        operation: 'TerraByte',
+        priority: 1,
+        category: 'Product',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an invalid deadline (non-zero exit)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'radar-cli-'));
+    try {
+      expect(() => run(['init', '--deadline', 'someday'], dir)).toThrow();
+      expect(existsSync(join(dir, 'BLIP.md'))).toBe(false); // nothing written on failure
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

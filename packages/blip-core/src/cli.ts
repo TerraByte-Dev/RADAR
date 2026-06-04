@@ -4,7 +4,7 @@ import { join, resolve, basename, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { readBlip, writeBlipAtomic, createBlip } from './index.js';
-import { HORIZONS, STATUSES, coercePriority, type Horizon, type Status } from './types.js';
+import { HORIZONS, STATUSES, coercePriority, coerceDeadline, type Horizon, type Status } from './types.js';
 
 interface Args {
   _: string[];
@@ -66,9 +66,9 @@ function parseRef(token: string | undefined): number | string {
 const HELP = `radar-blip — the BLIP.md engine CLI
 
 Usage:
-  radar-blip init     [--path DIR] [--name N] [--horizon H] [--priority 1-5] [--category C] [--status S] [--next "..."] [--force]
+  radar-blip init     [--path DIR] [--name N] [--horizon H] [--priority 1-5] [--category C] [--status S] [--next "..."] [--deadline YYYY-MM-DD] [--operation O] [--force]
   radar-blip show     [--path DIR] [--json]
-  radar-blip set      [--path DIR] [--horizon H] [--priority 1-5] [--category C] [--status S] [--next "..."] [--name N] [--tag T ...]
+  radar-blip set      [--path DIR] [--horizon H] [--priority 1-5] [--category C] [--status S] [--next "..."] [--deadline YYYY-MM-DD] [--operation O] [--name N] [--tag T ...]
   radar-blip task add "text"        [--path DIR]
   radar-blip task done|undone|toggle|rm  <n|text>   [--path DIR]
   radar-blip task list              [--path DIR]
@@ -94,6 +94,14 @@ function applyFieldFlags(blip: import('./index.js').Blip, flags: Args['flags']):
   if (category !== undefined) blip.setCategory(category);
   const next = str(flags.next);
   if (next !== undefined) blip.setNextAction(next);
+  const deadline = str(flags.deadline);
+  if (deadline !== undefined) {
+    const d = coerceDeadline(deadline);
+    if (d === undefined) fail(`invalid deadline "${deadline}" (use an ISO date like 2026-07-01)`);
+    blip.setDeadline(d);
+  }
+  const operation = str(flags.operation);
+  if (operation !== undefined) blip.setOperation(operation);
   const name = str(flags.name);
   if (name !== undefined) blip.setField('name', name);
   const tags = arrify(flags.tag);
@@ -107,8 +115,10 @@ function printModel(blip: import('./index.js').Blip): void {
     [
       `${m.name ?? '(unnamed)'}  [${m.status}]`,
       `  horizon : ${m.horizon}`,
+      `  deadline: ${m.deadline ?? '(none)'}`,
       `  priority: P${m.priority}`,
       `  category: ${m.category || '(none)'}`,
+      `  operation: ${m.operation ?? '(none)'}`,
       `  next    : ${m.next_action ?? '(none)'}`,
       `  tasks   : ${done}/${m.tasks.length} done`,
       ...m.tasks.map((t) => `    [${t.done ? 'x' : ' '}] ${t.text}`),
@@ -173,6 +183,9 @@ async function main(): Promise<void> {
       if (horizon !== undefined && !HORIZONS.includes(horizon as Horizon)) fail(`invalid horizon "${horizon}"`);
       const status = str(flags.status);
       if (status !== undefined && !STATUSES.includes(status as Status)) fail(`invalid status "${status}"`);
+      const deadlineFlag = str(flags.deadline);
+      const deadline = deadlineFlag !== undefined ? coerceDeadline(deadlineFlag) : undefined;
+      if (deadlineFlag !== undefined && deadline === undefined) fail(`invalid deadline "${deadlineFlag}" (use an ISO date like 2026-07-01)`);
       const blip = createBlip({
         name: str(flags.name) ?? basename(resolveDir(flags)),
         horizon: horizon as Horizon | undefined,
@@ -180,6 +193,8 @@ async function main(): Promise<void> {
         category: str(flags.category),
         status: status as Status | undefined,
         next_action: str(flags.next),
+        deadline,
+        operation: str(flags.operation),
       });
       await writeBlipAtomic(file, blip);
       process.stdout.write(`Created ${file}\n`);

@@ -18,6 +18,18 @@ export interface BlipFields {
   category: string;
   status: Status;
   next_action?: string;
+  /**
+   * Hard due date — ISO `YYYY-MM-DD` or full datetime. When present it drives the
+   * radar's continuous distance-from-center; `horizon` is the fuzzy fallback band.
+   */
+  deadline?: string;
+  /**
+   * App-owned visual pin in degrees [0, 360). Set by dragging a blip around the dial;
+   * a purely cosmetic override that does NOT reassign the project/category.
+   */
+  radar_angle?: number;
+  /** Optional cluster grouping — projects sharing an `operation` form a radar sector. */
+  operation?: string;
   created?: string;
   last_session?: string;
   tags?: string[];
@@ -27,7 +39,8 @@ export interface BlipFields {
 /** Keys the engine manages; everything else in frontmatter is "unknown" and preserved. */
 export const KNOWN_KEYS: readonly string[] = [
   'name', 'horizon', 'priority', 'category', 'status',
-  'next_action', 'created', 'last_session', 'tags', 'links',
+  'next_action', 'deadline', 'radar_angle', 'operation',
+  'created', 'last_session', 'tags', 'links',
 ];
 
 export const DEFAULTS = {
@@ -49,4 +62,18 @@ export function coercePriority(v: unknown): number {
   const n = typeof v === 'number' ? v : parseInt(String(v ?? ''), 10);
   if (!Number.isFinite(n)) return DEFAULTS.priority;
   return Math.min(5, Math.max(1, Math.round(n)));
+}
+
+/** Normalize a manual radar angle to [0, 360); `undefined` if it isn't a finite number. */
+export function coerceAngle(v: unknown): number | undefined {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return undefined;
+  return ((v % 360) + 360) % 360;
+}
+
+/** Accept an ISO date/datetime as a deadline; `undefined` if it isn't a parseable date string. */
+export function coerceDeadline(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined;
+  const s = v.trim();
+  if (!s) return undefined;
+  return Number.isNaN(new Date(s).getTime()) ? undefined : s;
 }

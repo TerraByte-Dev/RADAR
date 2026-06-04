@@ -32,9 +32,11 @@ With no argument, the default is **handoff**.
 - **`task "text"`** → `radar-blip task add "text"`. `task done|undone|toggle|rm <n|text>` and
   `task list` → forward verbatim (task numbers are 1-based).
 - **`init`** → `radar-blip init` (names the project from the folder); add `--category`,
-  `--horizon today|week|someday`, `--priority 1-5`, `--next "…"` if known. `--force` overwrites.
-- **`set …`** → forward to `radar-blip set`: `--horizon`, `--priority 1-5`, `--category`,
-  `--status active|paused|blocked|shipped|archived`, `--next "…"`, `--name`, `--tag` (repeatable).
+  `--horizon today|week|someday`, `--priority 1-5`, `--deadline YYYY-MM-DD` (hard due date),
+  `--operation "<cluster>"`, `--next "…"` if known. `--force` overwrites.
+- **`set …`** → forward to `radar-blip set`: `--horizon`, `--deadline YYYY-MM-DD`, `--priority 1-5`,
+  `--category`, `--operation "<cluster>"`, `--status active|paused|blocked|shipped|archived`,
+  `--next "…"`, `--name`, `--tag` (repeatable).
 - **`show`** → `radar-blip show` (`--json` for machine output).
 
 Quote every `--line`, `--next`, task text, and `--path` value (paths contain spaces). After

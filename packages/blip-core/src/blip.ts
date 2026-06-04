@@ -10,6 +10,7 @@ import {
   coerceHorizon,
   coerceStatus,
   coercePriority,
+  coerceAngle,
 } from './types.js';
 import { detectAuthor } from './identity.js';
 
@@ -170,6 +171,10 @@ export class Blip {
     };
     if (typeof v.name === 'string') out.name = v.name;
     if (typeof v.next_action === 'string') out.next_action = v.next_action;
+    if (typeof v.deadline === 'string') out.deadline = v.deadline;
+    const angle = coerceAngle(v.radar_angle);
+    if (angle !== undefined) out.radar_angle = angle;
+    if (typeof v.operation === 'string') out.operation = v.operation;
     if (typeof v.created === 'string') out.created = v.created;
     if (typeof v.last_session === 'string') out.last_session = v.last_session;
     if (Array.isArray(v.tags)) out.tags = v.tags as string[];
@@ -228,6 +233,13 @@ export class Blip {
   setCategory(c: string): this { return this.setField('category', c); }
   setStatus(s: Status): this { return this.setField('status', s); }
   setNextAction(text: string): this { return this.setField('next_action', text); }
+  /** Set or (with `null`) clear the hard deadline. */
+  setDeadline(date: string | null): this { return this.setField('deadline', date ?? undefined); }
+  /** Pin the visual radar angle, or clear it with `null`. Stored normalized to [0, 360). */
+  setRadarAngle(angle: number | null): this {
+    return this.setField('radar_angle', angle == null ? undefined : coerceAngle(angle));
+  }
+  setOperation(op: string | null): this { return this.setField('operation', op ?? undefined); }
 
   // ---- task editing ----
 

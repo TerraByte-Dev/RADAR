@@ -48,12 +48,16 @@ Read what the user typed after `/blip`. With no subcommand, the default is **han
 ### `/blip init` — create a BLIP.md for this folder
 `radar-blip init` (the CLI names the project from the folder). Add what you already know:
 `--category "<e.g. Product>"`, `--horizon <today|week|someday>`, `--priority <1-5>`,
+`--deadline <YYYY-MM-DD>` (a hard due date — drives the radar's exact distance, overriding the
+fuzzy horizon), `--operation "<cluster>"` (groups related projects into one radar sector),
 `--next "<first action>"`. Use `--force` only to overwrite an existing file (confirm first).
 
 ### `/blip set ...` — change radar fields
-Forward to `radar-blip set`: `--horizon`, `--priority 1-5`, `--category`,
+Forward to `radar-blip set`: `--horizon`, `--deadline <YYYY-MM-DD>` (hard due date),
+`--priority 1-5`, `--category`, `--operation "<cluster>"`,
 `--status <active|paused|blocked|shipped|archived>`, `--next "..."`, `--name`,
-`--tag` (repeatable). Example: `/blip set --status blocked --next "waiting on API key"`.
+`--tag` (repeatable). Example: `/blip set --status blocked --next "waiting on API key"`, or
+`/blip set --deadline 2026-07-01` to pin a real deadline.
 
 ### `/blip show` — print current state
 `radar-blip show` (add `--json` for machine output).
