@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { useMemo, useState } from 'react'
-import { CalendarClock, Flag, Hash, Tag } from 'lucide-react'
+import { CalendarClock, Flag, Hash, Inbox, Tag } from 'lucide-react'
 import { formatDue } from '../lib/date'
 import { parseQuickAdd } from '../lib/nlp'
 import { useStore } from '../store/useStore'
@@ -27,14 +27,15 @@ function Pill({
 export function QuickAdd(): JSX.Element {
   const open = useStore((s) => s.quickAddOpen)
   const projects = useStore((s) => s.projects)
-  const { setQuickAddOpen, addTaskFromParsed } = useStore.getState()
+  const { setQuickAddOpen, capture } = useStore.getState()
   const [text, setText] = useState('')
 
   const parsed = useMemo(() => (text.trim() ? parseQuickAdd(text) : null), [text])
 
-  const projectIsNew = useMemo(() => {
-    if (!parsed?.projectName) return false
-    return !projects.some((p) => p.name.toLowerCase() === parsed.projectName!.toLowerCase())
+  // Where will it land? A matching project, else the Inbox blip.
+  const target = useMemo(() => {
+    if (!parsed?.projectName) return null
+    return projects.find((p) => (p.name ?? '').toLowerCase() === parsed.projectName!.toLowerCase()) ?? null
   }, [parsed, projects])
 
   function close(): void {
@@ -44,7 +45,7 @@ export function QuickAdd(): JSX.Element {
 
   async function commit(): Promise<void> {
     if (!parsed || !parsed.title) return close()
-    await addTaskFromParsed(parsed)
+    await capture(text)
     close()
   }
 
@@ -58,7 +59,7 @@ export function QuickAdd(): JSX.Element {
         >
           <Dialog.Title className="flex items-center gap-2 border-b border-rule bg-black/40 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-phosphor">
             <span className="led-dot" />
-            Quick Add // New Task
+            Quick Capture
           </Dialog.Title>
 
           <div className="flex items-center gap-2 px-3 pt-3">
@@ -66,7 +67,7 @@ export function QuickAdd(): JSX.Element {
             <input
               autoFocus
               value={text}
-              placeholder="pay rent tomorrow 5pm p1 #finance @home"
+              placeholder="pay rent tomorrow 5pm p1 #personal @home"
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -78,36 +79,36 @@ export function QuickAdd(): JSX.Element {
             />
           </div>
 
-          {parsed &&
-            (parsed.due || parsed.priority !== 'none' || parsed.projectName || parsed.tags.length > 0) && (
-              <div className="flex flex-wrap items-center gap-1.5 px-3 pb-1 pt-2">
-                {parsed.due && (
-                  <Pill icon={CalendarClock} tone="text-term-cyan">
-                    {formatDue(parsed.due)}
-                  </Pill>
-                )}
-                {parsed.priority !== 'none' && (
-                  <Pill icon={Flag} tone="text-term-amber">
-                    {parsed.priority}
-                  </Pill>
-                )}
-                {parsed.projectName && (
-                  <Pill icon={Hash}>
-                    {parsed.projectName}
-                    {projectIsNew && <span className="ml-1 text-faint">(new)</span>}
-                  </Pill>
-                )}
-                {parsed.tags.map((t) => (
-                  <Pill key={t} icon={Tag}>
-                    {t}
-                  </Pill>
-                ))}
-              </div>
-            )}
+          {parsed && (
+            <div className="flex flex-wrap items-center gap-1.5 px-3 pb-1 pt-2">
+              {parsed.due && (
+                <Pill icon={CalendarClock} tone="text-term-cyan">
+                  {formatDue(parsed.due)}
+                </Pill>
+              )}
+              {parsed.priority !== 'none' && (
+                <Pill icon={Flag} tone="text-term-amber">
+                  {parsed.priority}
+                </Pill>
+              )}
+              {target ? (
+                <Pill icon={Hash}>{target.name}</Pill>
+              ) : (
+                <Pill icon={Inbox} tone="text-muted">
+                  inbox
+                </Pill>
+              )}
+              {parsed.tags.map((t) => (
+                <Pill key={t} icon={Tag}>
+                  {t}
+                </Pill>
+              ))}
+            </div>
+          )}
 
           <div className="flex items-center justify-between border-t border-rule px-3 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-faint">
-            <span>date · p1–p4 · #project · @tag parsed automatically</span>
-            <span className="text-phosphor/70">↵ add · esc close</span>
+            <span>#project routes to that repo · else → inbox</span>
+            <span className="text-phosphor/70">↵ capture · esc close</span>
           </div>
         </Dialog.Content>
       </Dialog.Portal>

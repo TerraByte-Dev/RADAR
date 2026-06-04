@@ -1,30 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, RotateCcw, Star, Trash2, X } from 'lucide-react'
-import type { Task } from '@shared/types'
-import { TaskDetail } from '../components/TaskDetail'
-import { daysFromToday, isOverdue } from '../lib/date'
+import { RotateCcw } from 'lucide-react'
+import type { ProjectRecord } from '@shared/radar'
+import { ProjectDetail } from '../components/ProjectDetail'
 import {
   angleFromPoint,
-  blipLayoutFrac,
-  blipRadiusFrac,
   daysFromFrac,
   dragPreviewLabel,
   layoutBlipAngles,
-  PRIO_SIZE,
   radiusFracForDays,
-  relativeDue,
   R_SOMEDAY,
   sectorBase,
-  subtaskRatio,
   TIME_RINGS
 } from '../lib/radar'
-import { tasksOnRadar } from '../lib/selectors'
+import {
+  categoryColor,
+  deadlineForFrac,
+  isOverdueProject,
+  prioSize,
+  projectLayoutFrac,
+  projectRadiusFrac,
+  projectRelativeDeadline,
+  taskRatio
+} from '../lib/projectRadar'
+import { projectsOnRadar } from '../lib/selectors'
 import { useStore } from '../store/useStore'
 
 const ACCENT = '#00FF88'
+const SIGNAL_LOST = '#FF3030'
 const PING_MS = 950
-/** Below this drop radius (px) the angle is meaningless, so we un-pin instead of pinning garbage. */
 const MIN_PIN_PX = 8
+const NO_CATEGORY = '·'
 
 function hexA(hex: string, a: number): string {
   if (!hex.startsWith('#') || hex.length < 7) return hex
@@ -32,57 +37,35 @@ function hexA(hex: string, a: number): string {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
 }
 
-/** Drop a dragged blip onto the timeline → an exact due date (preserving time-of-day). */
-function dueForFrac(frac: number, task: Task): Task['due'] {
-  const days = daysFromFrac(frac)
-  if (days === null) return undefined
-  const target = new Date()
-  target.setHours(0, 0, 0, 0)
-  target.setDate(target.getDate() + days)
-  if (task.due?.hasTime) {
-    const prev = new Date(task.due.date)
-    target.setHours(prev.getHours(), prev.getMinutes(), 0, 0)
-    return { date: target.toISOString(), hasTime: true }
-  }
-  return { date: target.toISOString(), hasTime: false }
-}
-
 export function RadarView(): JSX.Element {
-  const tasks = useStore((s) => s.tasks)
   const projects = useStore((s) => s.projects)
-  const selectedId = useStore((s) => s.radarSelectedId)
-  const { setRadarSelected, patchTask, resetRadarLayout } = useStore.getState()
+  const selectedBlip = useStore((s) => s.selectedBlip)
+  const { setSelectedBlip, setFields, resetRadarLayout } = useStore.getState()
 
   const [hudId, setHudId] = useState<string | null>(null)
 
-  const contacts = useMemo(() => tasksOnRadar(tasks), [tasks])
-  const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
+  const contacts = useMemo(() => projectsOnRadar(projects), [projects])
 
-  // Stable angular sector per project (+ an "inbox" slot for no-project tasks).
+  // Stable angular sector per category.
   const sectorByKey = useMemo(() => {
-    const ordered = [...projects].sort((a, b) => a.order - b.order)
-    const count = ordered.length + 1
+    const cats = [...new Set(contacts.map((p) => p.category || NO_CATEGORY))].sort()
     const map = new Map<string, number>()
-    ordered.forEach((p, i) => map.set(p.id, sectorBase(i, count)))
-    map.set('inbox', sectorBase(ordered.length, count))
+    cats.forEach((c, i) => map.set(c, sectorBase(i, cats.length)))
     return map
-  }, [projects])
+  }, [contacts])
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const stateRef = useRef({ contacts, projectById, sectorByKey, selectedId, hoveredId: null as string | null })
-  stateRef.current = { contacts, projectById, sectorByKey, selectedId, hoveredId: stateRef.current.hoveredId }
+  const stateRef = useRef({ contacts, sectorByKey, selectedBlip, hoveredId: null as string | null })
+  stateRef.current = { contacts, sectorByKey, selectedBlip, hoveredId: stateRef.current.hoveredId }
 
   const posRef = useRef<Map<string, { x: number; y: number; r: number }>>(new Map())
-  // Idle angular layout, cached on a data signature so it isn't recomputed every frame.
   const layoutCacheRef = useRef<{ sig: string; map: Map<string, number> }>({ sig: '', map: new Map() })
   const geomRef = useRef({ cx: 0, cy: 0, R: 0 })
   const mouseRef = useRef({ x: 0, y: 0, inside: false })
   const dragRef = useRef<{ id: string; moved: boolean; startX: number; startY: number } | null>(null)
 
-  const selected = selectedId ? tasks.find((t) => t.id === selectedId) : undefined
+  const selected = selectedBlip ? projects.find((p) => p.blipPath === selectedBlip) : undefined
 
-  // Releasing the button anywhere ends a drag — prevents a stuck-drag when the
-  // cursor is released off-canvas (canvas onMouseUp handles in-canvas releases first).
   useEffect(() => {
     const onUp = (): void => {
       dragRef.current = null
@@ -91,27 +74,26 @@ export function RadarView(): JSX.Element {
     return () => window.removeEventListener('mouseup', onUp)
   }, [])
 
-  // Esc closes the selected-contact panel (keyboard-first dismissal), unless a dialog owns Esc.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
       const s = useStore.getState()
-      if (!s.quickAddOpen && !s.paletteOpen && s.radarSelectedId) {
+      if (!s.quickAddOpen && !s.paletteOpen && s.selectedBlip) {
         e.stopPropagation()
-        s.setRadarSelected(null)
+        s.setSelectedBlip(null)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // Drop a stale hover/selection if its task leaves the radar (snoozed/completed/deleted elsewhere).
+  // Drop a stale hover/selection if its project leaves the radar.
   useEffect(() => {
-    const ids = new Set(contacts.map((t) => t.id))
-    if (selectedId && !ids.has(selectedId)) setRadarSelected(null)
+    const ids = new Set(contacts.map((p) => p.blipPath))
+    if (selectedBlip && !ids.has(selectedBlip)) setSelectedBlip(null)
     if (stateRef.current.hoveredId && !ids.has(stateRef.current.hoveredId)) setHovered(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contacts, selectedId])
+  }, [contacts, selectedBlip])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -154,19 +136,19 @@ export function RadarView(): JSX.Element {
       return [cx + r * Math.sin(a), cy - r * Math.cos(a)]
     }
     const m360 = (n: number): number => ((n % 360) + 360) % 360
-    const passed = (t: number, p: number, c: number): boolean => {
+    const passed = (t: number, pr: number, c: number): boolean => {
       t = m360(t)
-      p = m360(p)
+      pr = m360(pr)
       c = m360(c)
-      return p <= c ? t > p && t <= c : t > p || t <= c
+      return pr <= c ? t > pr && t <= c : t > pr || t <= c
     }
 
     function frame(now: number): void {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
       if (!reduce) sweep += (360 / 7) * dt
-      const ref = new Date() // recomputed each frame so distance tracks the real clock/day
-      const { contacts, projectById, sectorByKey, selectedId, hoveredId } = stateRef.current
+      const ref = new Date()
+      const { contacts, sectorByKey, selectedBlip, hoveredId } = stateRef.current
 
       ctx!.clearRect(0, 0, W, H)
       if (R < 1) {
@@ -175,7 +157,6 @@ export function RadarView(): JSX.Element {
         return
       }
 
-      // center glow
       const glow = ctx!.createRadialGradient(cx, cy, 0, cx, cy, R)
       glow.addColorStop(0, 'rgba(0,255,136,.10)')
       glow.addColorStop(0.6, 'rgba(0,255,136,.025)')
@@ -190,7 +171,6 @@ export function RadarView(): JSX.Element {
       ctx!.arc(cx, cy, R, 0, 7)
       ctx!.clip()
 
-      // faint range rings (texture)
       for (let i = 1; i <= 6; i++) {
         ctx!.beginPath()
         ctx!.arc(cx, cy, (R * i) / 6, 0, 7)
@@ -198,7 +178,6 @@ export function RadarView(): JSX.Element {
         ctx!.lineWidth = 1
         ctx!.stroke()
       }
-      // labeled time rings (the readable scale)
       for (const ring of TIME_RINGS) {
         const frac = ring.days === null ? R_SOMEDAY : radiusFracForDays(ring.days)
         ctx!.beginPath()
@@ -209,7 +188,6 @@ export function RadarView(): JSX.Element {
         ctx!.stroke()
         ctx!.setLineDash([])
       }
-      // spokes
       ctx!.strokeStyle = 'rgba(0,255,136,.08)'
       ctx!.lineWidth = 1
       for (let a = 0; a < 360; a += 30) {
@@ -220,7 +198,6 @@ export function RadarView(): JSX.Element {
         ctx!.stroke()
       }
 
-      // sweep trail
       if (!reduce) {
         const N = 48
         const step = 2.6
@@ -248,7 +225,6 @@ export function RadarView(): JSX.Element {
       ctx!.shadowBlur = 0
       ctx!.restore()
 
-      // rim + ticks
       ctx!.beginPath()
       ctx!.arc(cx, cy, R, 0, 7)
       ctx!.strokeStyle = 'rgba(0,255,136,.45)'
@@ -265,7 +241,6 @@ export function RadarView(): JSX.Element {
         ctx!.stroke()
       }
 
-      // time-ring labels (along the top spoke)
       ctx!.textAlign = 'center'
       ctx!.textBaseline = 'middle'
       ctx!.font = '9px "IBM Plex Mono", ui-monospace, monospace'
@@ -279,14 +254,10 @@ export function RadarView(): JSX.Element {
         ctx!.fillText(ring.label, x, y)
       }
 
-      // blips — resolve every angle: pinned blips at their override, the rest fanned
-      // around them. The idle layout is cached on a data signature (recompute on
-      // data / day-rollover / resize, not every frame); while a blip is dragged we
-      // recompute live so its same-wedge siblings make room for it under the cursor.
       const drag = dragRef.current
       const anyDragging = !!drag && drag.moved && mouseRef.current.inside
       const wedgeSpacing = 360 / Math.max(sectorByKey.size, 1)
-      const baseOf = (t: Task): number => sectorByKey.get(t.projectId ?? 'inbox') ?? 0
+      const baseOf = (p: ProjectRecord): number => sectorByKey.get(p.category || NO_CATEGORY) ?? 0
       let angleById: Map<string, number>
       if (anyDragging && drag) {
         const mdx = mouseRef.current.x - cx
@@ -294,15 +265,15 @@ export function RadarView(): JSX.Element {
         const liveAngle = angleFromPoint(mdx, mdy)
         const liveFrac = Math.hypot(mdx, mdy) / R
         angleById = layoutBlipAngles(
-          contacts.map((t) =>
-            t.id === drag.id
-              ? { id: t.id, frac: liveFrac, base: baseOf(t), size: PRIO_SIZE[t.priority], override: liveAngle }
+          contacts.map((p) =>
+            p.blipPath === drag.id
+              ? { id: p.blipPath, frac: liveFrac, base: baseOf(p), size: prioSize(p.priority), override: liveAngle }
               : {
-                  id: t.id,
-                  frac: blipLayoutFrac(t, ref),
-                  base: baseOf(t),
-                  size: PRIO_SIZE[t.priority],
-                  override: t.radarAngle ?? null
+                  id: p.blipPath,
+                  frac: projectLayoutFrac(p, ref),
+                  base: baseOf(p),
+                  size: prioSize(p.priority),
+                  override: p.radar_angle ?? null
                 }
           ),
           { R, wedgeSpacing }
@@ -311,23 +282,18 @@ export function RadarView(): JSX.Element {
         const sig =
           `${R.toFixed(1)}|${wedgeSpacing.toFixed(2)}|` +
           contacts
-            .map(
-              (t) =>
-                `${t.id},${t.projectId ?? '-'},${t.radarAngle ?? '-'},${
-                  t.due ? daysFromToday(t.due.date, ref) : '-'
-                },${t.priority}`
-            )
+            .map((p) => `${p.blipPath},${p.category},${p.radar_angle ?? '-'},${p.deadline ?? p.horizon},${p.priority}`)
             .join(';')
         if (layoutCacheRef.current.sig !== sig) {
           layoutCacheRef.current = {
             sig,
             map: layoutBlipAngles(
-              contacts.map((t) => ({
-                id: t.id,
-                frac: blipLayoutFrac(t, ref),
-                base: baseOf(t),
-                size: PRIO_SIZE[t.priority],
-                override: t.radarAngle ?? null
+              contacts.map((p) => ({
+                id: p.blipPath,
+                frac: projectLayoutFrac(p, ref),
+                base: baseOf(p),
+                size: prioSize(p.priority),
+                override: p.radar_angle ?? null
               })),
               { R, wedgeSpacing }
             )
@@ -335,28 +301,33 @@ export function RadarView(): JSX.Element {
         }
         angleById = layoutCacheRef.current.map
       }
+
       const positions = new Map<string, { x: number; y: number; r: number }>()
-      for (const task of contacts) {
-        const angle = angleById.get(task.id) ?? 0
-        const dragging = !!drag && drag.id === task.id && drag.moved && mouseRef.current.inside
+      for (const proj of contacts) {
+        const angle = angleById.get(proj.blipPath) ?? 0
+        const dragging = !!drag && drag.id === proj.blipPath && drag.moved && mouseRef.current.inside
         let x: number
         let y: number
         if (dragging) {
           x = mouseRef.current.x
           y = mouseRef.current.y
         } else {
-          ;[x, y] = pt(blipRadiusFrac(task, ref) * R, angle)
+          ;[x, y] = pt(projectRadiusFrac(proj, ref) * R, angle)
         }
-        const overdue = isOverdue(task.due, ref)
-        const color = overdue ? '#FF3030' : projectById.get(task.projectId ?? '')?.color ?? ACCENT
-        const baseSize = PRIO_SIZE[task.priority]
+        const color = proj.error
+          ? SIGNAL_LOST
+          : isOverdueProject(proj, ref)
+            ? '#FF3030'
+            : categoryColor(proj.category)
+        const baseSize = prioSize(proj.priority)
         let size = baseSize
-        if (!reduce && task.priority === 'P1') size += Math.sin(now / 380) * 0.7
-        // Hit-test against the stable base size (not the pulsing drawn size).
-        positions.set(task.id, { x, y, r: baseSize })
+        if (!reduce && proj.priority === 1) size += Math.sin(now / 380) * 0.7
+        positions.set(proj.blipPath, { x, y, r: baseSize })
 
-        if (!reduce && passed(angle, prevSweep, sweep)) pings.set(task.id, now)
-        const pingAge = now - (pings.get(task.id) ?? -1e9)
+        if (proj.status === 'shipped') ctx!.globalAlpha = 0.4
+
+        if (!reduce && passed(angle, prevSweep, sweep)) pings.set(proj.blipPath, now)
+        const pingAge = now - (pings.get(proj.blipPath) ?? -1e9)
         if (pingAge < PING_MS) {
           const t = pingAge / PING_MS
           ctx!.beginPath()
@@ -366,7 +337,7 @@ export function RadarView(): JSX.Element {
           ctx!.stroke()
         }
 
-        const ratio = subtaskRatio(task)
+        const ratio = taskRatio(proj)
         if (ratio > 0) {
           ctx!.beginPath()
           ctx!.arc(x, y, size + 3, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2)
@@ -379,11 +350,22 @@ export function RadarView(): JSX.Element {
         ctx!.arc(x, y, size, 0, 7)
         ctx!.fillStyle = color
         ctx!.shadowColor = color
-        ctx!.shadowBlur = task.starred && !reduce ? 8 + Math.sin(now / 240) * 5 : 9
+        ctx!.shadowBlur = proj.status === 'blocked' && !reduce ? 6 + Math.sin(now / 200) * 6 : 9
         ctx!.fill()
         ctx!.shadowBlur = 0
 
-        // live drag preview — where on the timeline this blip will land
+        // signal-lost: a dashed warning ring
+        if (proj.error) {
+          ctx!.setLineDash([2, 3])
+          ctx!.beginPath()
+          ctx!.arc(x, y, size + 4, 0, 7)
+          ctx!.strokeStyle = hexA(SIGNAL_LOST, 0.8)
+          ctx!.lineWidth = 1.2
+          ctx!.stroke()
+          ctx!.setLineDash([])
+        }
+        ctx!.globalAlpha = 1
+
         if (dragging) {
           const frac = Math.hypot(x - cx, y - cy) / R
           const label = dragPreviewLabel(frac)
@@ -399,7 +381,7 @@ export function RadarView(): JSX.Element {
           ctx!.fillText(label, x, y - size - 13)
         }
 
-        if (task.id === hoveredId || task.id === selectedId) {
+        if (proj.blipPath === hoveredId || proj.blipPath === selectedBlip) {
           ctx!.setLineDash([3, 3])
           ctx!.beginPath()
           ctx!.moveTo(cx, cy)
@@ -410,14 +392,13 @@ export function RadarView(): JSX.Element {
           ctx!.setLineDash([])
           ctx!.beginPath()
           ctx!.arc(x, y, size + 6, 0, 7)
-          ctx!.strokeStyle = task.id === selectedId ? ACCENT : '#fff'
+          ctx!.strokeStyle = proj.blipPath === selectedBlip ? ACCENT : '#fff'
           ctx!.lineWidth = 1.4
           ctx!.stroke()
         }
       }
       posRef.current = positions
 
-      // center marker
       if (!reduce) {
         const pr = 9 + Math.sin(now / 600) * 3
         ctx!.beginPath()
@@ -438,7 +419,7 @@ export function RadarView(): JSX.Element {
         ctx!.fillStyle = 'rgba(155,245,184,.45)'
         ctx!.textAlign = 'center'
         ctx!.font = '11px "IBM Plex Mono", ui-monospace, monospace'
-        ctx!.fillText('NO CONTACTS ON RADAR', cx, cy + R * 0.5)
+        ctx!.fillText('NO CONTACTS — ADOPT A FOLDER OR ADD A WORKSPACE ROOT', cx, cy + R * 0.5)
       }
 
       prevSweep = sweep
@@ -475,22 +456,19 @@ export function RadarView(): JSX.Element {
     setHudId(id)
   }
 
-  const hud = hudId ? contacts.find((t) => t.id === hudId) : undefined
-  // Computed over *all* tasks (not just on-radar ones) so the reset affordance
-  // appears whenever any pin exists — matching what resetRadarLayout actually clears.
-  const hasPinned = tasks.some((t) => t.radarAngle != null)
+  const hud = hudId ? contacts.find((p) => p.blipPath === hudId) : undefined
+  const hasPinned = projects.some((p) => p.radar_angle != null)
 
   return (
     <main className="relative flex h-full flex-1 overflow-hidden bg-bg">
       <section className="relative flex h-full flex-1 flex-col overflow-hidden">
-        {/* Header overlay */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between px-9 pt-5">
           <div>
             <h1 className="font-term text-3xl uppercase tracking-wide text-phosphor phosphor-glow">
               Radar
             </h1>
             <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
-              <span className="led-dot" /> {contacts.length} contacts · distance = deadline · drag to
+              <span className="led-dot" /> {contacts.length} projects · distance = deadline · drag to
               place · right-click resets
             </div>
             {hasPinned && (
@@ -520,7 +498,7 @@ export function RadarView(): JSX.Element {
           className="h-full w-full"
           style={{ cursor: hudId ? 'pointer' : 'crosshair' }}
           onMouseDown={(e) => {
-            if (e.button !== 0) return // primary button only; right-click is handled by onContextMenu
+            if (e.button !== 0) return
             const { x, y } = toCanvas(e)
             const id = hitTest(x, y)
             if (id) dragRef.current = { id, moved: false, startX: x, startY: y }
@@ -530,29 +508,26 @@ export function RadarView(): JSX.Element {
             mouseRef.current = { x, y, inside: true }
             const drag = dragRef.current
             if (drag) {
-              // Only treat it as a drag past a small threshold, so click-jitter
-              // doesn't accidentally reschedule the task.
               if (Math.hypot(x - drag.startX, y - drag.startY) > 4) drag.moved = true
-            } else if (!selectedId) {
-              // Skip hover while a contact is selected — only the selected blip is emphasized.
+            } else if (!selectedBlip) {
               setHovered(hitTest(x, y))
             }
           }}
           onMouseUp={(e) => {
-            if (e.button !== 0) return // primary button only
+            if (e.button !== 0) return
             const drag = dragRef.current
             dragRef.current = null
             if (!drag) {
-              setRadarSelected(null)
+              setSelectedBlip(null)
               return
             }
             if (!drag.moved) {
               setHovered(null)
-              setRadarSelected(drag.id)
+              setSelectedBlip(drag.id)
               return
             }
-            const task = tasks.find((t) => t.id === drag.id)
-            if (!task) return
+            const proj = projects.find((p) => p.blipPath === drag.id)
+            if (!proj) return
             const { x, y } = toCanvas(e)
             const { cx, cy, R } = geomRef.current
             if (R <= 0) return
@@ -560,30 +535,21 @@ export function RadarView(): JSX.Element {
             const dy = y - cy
             const r = Math.hypot(dx, dy)
             const frac = r / R
-            // Pin the angle the blip was dropped at — but only if it landed far
-            // enough from the center to *have* a meaningful bearing; otherwise
-            // un-pin, so a drag toward "now" doesn't snap it to a garbage angle.
-            const patch: Partial<Task> = {
-              radarAngle: r > MIN_PIN_PX ? angleFromPoint(dx, dy) : undefined
+            const patch: { radar_angle: number | null; deadline?: string | null } = {
+              radar_angle: r > MIN_PIN_PX ? angleFromPoint(dx, dy) : null
             }
-            // Reschedule only when the drop lands in a different day-bucket than the
-            // blip's current radius. A pure angular nudge stays in the same bucket,
-            // so it never shifts the deadline or logs a phantom "rescheduled" —
-            // robust for timed dues too, whose fractional radius rounds to a day.
-            const now = new Date()
-            if (daysFromFrac(frac) !== daysFromFrac(blipRadiusFrac(task, now))) {
-              patch.due = dueForFrac(frac, task)
+            // Reschedule only when the drop changes day-bucket (a pure angular nudge keeps the date).
+            if (daysFromFrac(frac) !== daysFromFrac(projectRadiusFrac(proj, new Date()))) {
+              patch.deadline = deadlineForFrac(frac)
             }
-            patchTask(drag.id, patch)
+            setFields(drag.id, patch)
           }}
           onContextMenu={(e) => {
-            // Right-click a repositioned blip → clear its manual angle (re-join the
-            // auto layout). Always suppress the native menu over the canvas.
             e.preventDefault()
             const { x, y } = toCanvas(e)
             const id = hitTest(x, y)
-            const task = id ? tasks.find((t) => t.id === id) : undefined
-            if (task?.radarAngle != null) patchTask(task.id, { radarAngle: undefined })
+            const proj = id ? projects.find((p) => p.blipPath === id) : undefined
+            if (proj?.radar_angle != null) setFields(proj.blipPath, { radar_angle: null })
           }}
           onMouseLeave={() => {
             mouseRef.current.inside = false
@@ -591,88 +557,22 @@ export function RadarView(): JSX.Element {
           }}
         />
 
-        {/* Hover HUD */}
         {hud && !selected && (
           <div className="pointer-events-none absolute bottom-5 left-1/2 z-10 -translate-x-1/2 border border-rule bg-black/80 px-3 py-1.5 text-center">
-            <div className="font-mono text-[13px] text-ink">{hud.title}</div>
+            <div className="font-mono text-[13px] text-ink">{hud.name ?? 'Project'}</div>
             <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
-              {hud.priority !== 'none' && `${hud.priority} · `}
-              {relativeDue(hud)}
-              {hud.projectId && ` · ${projectById.get(hud.projectId)?.name ?? ''}`}
+              {hud.error ? 'SIGNAL LOST' : `P${hud.priority} · ${projectRelativeDeadline(hud)}`}
+              {hud.category && ` · ${hud.category}`}
             </div>
           </div>
         )}
       </section>
 
-      {/* Selected contact detail */}
       {selected && (
-        <aside className="flex h-full w-80 shrink-0 flex-col border-l border-rule bg-panel">
-          <ContactHeader task={selected} />
-          <div className="flex-1 overflow-y-auto px-1 py-2">
-            <TaskDetail task={selected} />
-          </div>
+        <aside className="flex h-full w-[22rem] shrink-0 flex-col border-l border-rule bg-panel">
+          <ProjectDetail project={selected} onClose={() => setSelectedBlip(null)} />
         </aside>
       )}
     </main>
-  )
-}
-
-function ContactHeader({ task }: { task: Task }): JSX.Element {
-  const { toggleComplete, toggleStar, deleteTask, setRadarSelected, setRadarAngle } =
-    useStore.getState()
-  return (
-    <header className="border-b border-rule px-3 py-3">
-      <div className="flex items-start gap-2">
-        <button
-          onClick={() => toggleComplete(task.id)}
-          aria-label="Complete"
-          className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-sm border transition-all ${
-            task.completed ? 'border-phosphor bg-phosphor text-black' : 'border-faint hover:border-phosphor'
-          }`}
-        >
-          {task.completed && <Check size={12} strokeWidth={3} />}
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className={`font-mono text-[13px] leading-snug ${task.completed ? 'text-faint line-through' : 'text-ink'}`}>
-            {task.title}
-          </div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
-            {relativeDue(task)}
-          </div>
-          {task.radarAngle != null && (
-            <button
-              onClick={() => setRadarAngle(task.id, undefined)}
-              className="mt-1.5 inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.12em] text-faint transition-colors hover:text-phosphor"
-            >
-              <RotateCcw size={9} /> pinned · reset position
-            </button>
-          )}
-        </div>
-        <button
-          onClick={() => toggleStar(task.id)}
-          aria-label="Star"
-          className={`mt-0.5 shrink-0 ${task.starred ? 'text-term-amber' : 'text-faint hover:text-phosphor'}`}
-        >
-          <Star size={14} fill={task.starred ? 'currentColor' : 'none'} />
-        </button>
-        <button
-          onClick={() => {
-            deleteTask(task.id)
-            setRadarSelected(null)
-          }}
-          aria-label="Delete"
-          className="mt-0.5 shrink-0 text-faint hover:text-p1"
-        >
-          <Trash2 size={14} />
-        </button>
-        <button
-          onClick={() => setRadarSelected(null)}
-          aria-label="Close"
-          className="metal-key ml-1 h-6 w-6"
-        >
-          <X size={12} />
-        </button>
-      </div>
-    </header>
   )
 }

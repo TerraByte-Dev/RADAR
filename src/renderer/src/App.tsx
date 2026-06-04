@@ -9,14 +9,14 @@ import { useKeyboard } from './lib/useKeyboard'
 import { useStore } from './store/useStore'
 import { CalendarView } from './views/CalendarView'
 import { LogbookView } from './views/LogbookView'
+import { ProjectListView } from './views/ProjectListView'
 import { RadarView } from './views/RadarView'
-import { TaskListView } from './views/TaskListView'
 
 function ActiveView({ kind }: { kind: string }): JSX.Element {
   if (kind === 'radar') return <RadarView />
   if (kind === 'logbook') return <LogbookView />
   if (kind === 'calendar') return <CalendarView />
-  return <TaskListView />
+  return <ProjectListView />
 }
 
 export default function App(): JSX.Element {

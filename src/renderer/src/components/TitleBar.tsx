@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Minus, Square, X } from 'lucide-react'
-import { isSnoozed } from '../lib/selectors'
 import { useStore } from '../store/useStore'
 
 function formatClock(d: Date): string {
@@ -12,7 +11,7 @@ function formatClock(d: Date): string {
 
 /** Frameless-window title bar — brand logotype, live clock, and window controls. */
 export function TitleBar(): JSX.Element {
-  const tasks = useStore((s) => s.tasks)
+  const projects = useStore((s) => s.projects)
   const [clock, setClock] = useState(() => formatClock(new Date()))
 
   useEffect(() => {
@@ -20,8 +19,8 @@ export function TitleBar(): JSX.Element {
     return () => window.clearInterval(id)
   }, [])
 
-  // Actionable open tasks — mirrors the action views (excludes snoozed).
-  const open = tasks.filter((t) => !t.completed && !isSnoozed(t)).length
+  // Active projects on the radar (excludes archived).
+  const open = projects.filter((p) => p.status !== 'archived').length
 
   return (
     <div
@@ -33,7 +32,7 @@ export function TitleBar(): JSX.Element {
         style={{ transform: 'rotate(45deg)', boxShadow: '0 0 6px #00FF88', animation: 'term-blink 2s steps(2) infinite' }}
       />
       <span className="phosphor-glow font-term text-[13px] tracking-[1.5px] text-phosphor">
-        TODOPLUS//SYS
+        RADAR//SYS
       </span>
       <span className="mx-2 font-term text-[13px] text-faint">—</span>
       <span className="font-term text-[13px] tracking-[1px] text-term-cyan">{clock}</span>
@@ -42,7 +41,7 @@ export function TitleBar(): JSX.Element {
 
       <div className="no-drag flex items-center gap-3">
         <span className="hidden font-mono text-[10px] uppercase tracking-[0.12em] text-term-amber sm:inline">
-          ● {open} OPEN
+          ● {open} PROJECTS
         </span>
         <div className="flex items-center gap-[3px]">
           <button

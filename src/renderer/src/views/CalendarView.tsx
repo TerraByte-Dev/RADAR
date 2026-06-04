@@ -1,29 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
-import type { Task } from '@shared/types'
-import { TaskRow } from '../components/TaskRow'
-import {
-  buildMonthGrid,
-  dayKey,
-  monthLabel,
-  WEEKDAY_LABELS,
-  type CalendarDay
-} from '../lib/date'
-import { parseQuickAdd } from '../lib/nlp'
-import { PRIORITY_DOT } from '../lib/palette'
-import { tasksByDayKey, tasksOnDay } from '../lib/selectors'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import type { ProjectRecord } from '@shared/radar'
+import { buildMonthGrid, dayKey, monthLabel, WEEKDAY_LABELS, type CalendarDay } from '../lib/date'
+import { projectsByDeadlineKey, projectsOnDeadlineDay } from '../lib/selectors'
+import { categoryColor } from '../lib/projectRadar'
 import { useStore } from '../store/useStore'
 
-const DAY_FMT = new Intl.DateTimeFormat(undefined, {
-  weekday: 'long',
-  month: 'short',
-  day: 'numeric'
-})
+const DAY_FMT = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+const BLIP_DRAG_MIME = 'application/x-radar-blip'
 
-const TASK_DRAG_MIME = 'application/x-todoplus-task'
+/** Local YYYY-MM-DD for a day-grid ISO (which is local midnight). */
+function isoToYMD(iso: string): string {
+  const d = new Date(iso)
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
 
 export function CalendarView(): JSX.Element {
-  const tasks = useStore((s) => s.tasks)
   const projects = useStore((s) => s.projects)
   const month = useStore((s) => s.calendarMonth)
   const selectedDay = useStore((s) => s.calendarSelectedDay)
@@ -32,68 +25,39 @@ export function CalendarView(): JSX.Element {
     calendarNextMonth,
     calendarGoToday,
     setCalendarSelectedDay,
-    setDue,
-    addTaskFromParsed
+    setFields,
+    setView,
+    setSelectedBlip
   } = useStore.getState()
 
   const [dragOver, setDragOver] = useState<string | null>(null)
-  const [composer, setComposer] = useState('')
 
-  // Land on today the first time the calendar opens.
   useEffect(() => {
     if (!selectedDay) setCalendarSelectedDay(dayKey(new Date()))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const grid = useMemo(() => buildMonthGrid(month), [month])
-  const byDay = useMemo(() => tasksByDayKey(tasks), [tasks])
-  const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
-
-  const dayTasks = useMemo(
-    () => (selectedDay ? tasksOnDay(tasks, selectedDay) : []),
-    [tasks, selectedDay]
+  const byDay = useMemo(() => projectsByDeadlineKey(projects), [projects])
+  const dayProjects = useMemo(
+    () => (selectedDay ? projectsOnDeadlineDay(projects, selectedDay) : []),
+    [projects, selectedDay]
   )
-
-  /** Move a task to a new day, preserving its time-of-day if it had one. */
-  function rescheduleToDay(task: Task, iso: string): void {
-    if (task.due?.hasTime) {
-      const target = new Date(iso)
-      const prev = new Date(task.due.date)
-      target.setHours(prev.getHours(), prev.getMinutes(), 0, 0)
-      setDue(task.id, { date: target.toISOString(), hasTime: true })
-    } else {
-      setDue(task.id, { date: iso, hasTime: false })
-    }
-  }
 
   function onDrop(e: React.DragEvent, iso: string): void {
     e.preventDefault()
     setDragOver(null)
-    const id = e.dataTransfer.getData(TASK_DRAG_MIME)
-    const task = tasks.find((t) => t.id === id)
-    if (task) rescheduleToDay(task, iso)
+    const blipPath = e.dataTransfer.getData(BLIP_DRAG_MIME)
+    if (blipPath) setFields(blipPath, { deadline: isoToYMD(iso) })
   }
 
-  function commitComposer(): void {
-    const text = composer.trim()
-    if (!text || !selectedDay) return
-    const parsed = parseQuickAdd(text)
-    // This composer always lands on the selected day (that's its promise). If the
-    // user typed a time, keep the time-of-day but pin it to the selected date.
-    let due = { date: selectedDay, hasTime: false }
-    if (parsed.due?.hasTime) {
-      const d = new Date(selectedDay)
-      const t = new Date(parsed.due.date)
-      d.setHours(t.getHours(), t.getMinutes(), 0, 0)
-      due = { date: d.toISOString(), hasTime: true }
-    }
-    addTaskFromParsed({ ...parsed, title: parsed.title || text, due })
-    setComposer('')
+  function open(blipPath: string): void {
+    setView({ kind: 'radar' })
+    setSelectedBlip(blipPath)
   }
 
   return (
     <main className="relative flex h-full flex-1 overflow-hidden bg-bg">
-      {/* ── Calendar grid ── */}
       <section className="flex h-full flex-1 flex-col overflow-hidden">
         <header className="drag-region flex items-center gap-3 px-9 pb-3 pt-5">
           <h1 className="font-term text-3xl uppercase tracking-wide text-phosphor phosphor-glow">
@@ -103,21 +67,13 @@ export function CalendarView(): JSX.Element {
             <span className="mr-2 font-mono text-sm uppercase tracking-[0.14em] text-ink">
               {monthLabel(month)}
             </span>
-            <button
-              onClick={calendarPrevMonth}
-              aria-label="Previous month"
-              className="metal-key h-7 w-7"
-            >
+            <button onClick={calendarPrevMonth} aria-label="Previous month" className="metal-key h-7 w-7">
               <ChevronLeft size={14} />
             </button>
             <button onClick={calendarGoToday} className="btn h-7 px-3 text-[11px]">
               Today
             </button>
-            <button
-              onClick={calendarNextMonth}
-              aria-label="Next month"
-              className="metal-key h-7 w-7"
-            >
+            <button onClick={calendarNextMonth} aria-label="Next month" className="metal-key h-7 w-7">
               <ChevronRight size={14} />
             </button>
           </div>
@@ -125,7 +81,6 @@ export function CalendarView(): JSX.Element {
 
         <div className="flex-1 overflow-hidden px-6 pb-6">
           <div className="flex h-full flex-col border border-rule bg-panel">
-            {/* Weekday header */}
             <div className="grid grid-cols-7 border-b border-rule">
               {WEEKDAY_LABELS.map((w) => (
                 <div
@@ -136,17 +91,16 @@ export function CalendarView(): JSX.Element {
                 </div>
               ))}
             </div>
-
-            {/* 6-week grid */}
             <div className="grid flex-1 grid-cols-7 grid-rows-6">
               {grid.map((cell) => (
                 <DayCell
                   key={cell.iso}
                   cell={cell}
-                  tasks={byDay.get(cell.iso) ?? []}
+                  projects={byDay.get(cell.iso) ?? []}
                   selected={selectedDay === cell.iso}
                   dragOver={dragOver === cell.iso}
                   onSelect={() => setCalendarSelectedDay(cell.iso)}
+                  onOpen={open}
                   onDragEnter={() => setDragOver(cell.iso)}
                   onDragLeave={() => setDragOver((d) => (d === cell.iso ? null : d))}
                   onDrop={(e) => onDrop(e, cell.iso)}
@@ -157,7 +111,6 @@ export function CalendarView(): JSX.Element {
         </div>
       </section>
 
-      {/* ── Day detail panel ── */}
       {selectedDay && (
         <aside className="flex h-full w-80 shrink-0 flex-col border-l border-rule bg-panel">
           <header className="flex items-center gap-2 border-b border-rule px-4 py-3">
@@ -167,48 +120,34 @@ export function CalendarView(): JSX.Element {
                 {DAY_FMT.format(new Date(selectedDay))}
               </div>
               <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
-                {dayTasks.length} {dayTasks.length === 1 ? 'task' : 'tasks'}
+                {dayProjects.length} {dayProjects.length === 1 ? 'deadline' : 'deadlines'}
               </div>
             </div>
-            <button
-              onClick={() => setCalendarSelectedDay(null)}
-              aria-label="Close day"
-              className="metal-key h-6 w-6"
-            >
+            <button onClick={() => setCalendarSelectedDay(null)} aria-label="Close day" className="metal-key h-6 w-6">
               <X size={12} />
             </button>
           </header>
-
           <div className="flex-1 overflow-y-auto px-2 py-2">
-            {dayTasks.length === 0 ? (
+            {dayProjects.length === 0 ? (
               <p className="mt-10 text-center font-mono text-xs uppercase tracking-[0.12em] text-faint">
-                Nothing scheduled.
+                No deadlines.
               </p>
             ) : (
-              dayTasks.map((task) => (
-                <TaskRow
-                  key={task.id}
-                  task={task}
-                  projectName={task.projectId ? projectById.get(task.projectId)?.name : undefined}
-                  projectColor={
-                    task.projectId ? projectById.get(task.projectId)?.color : undefined
-                  }
-                />
+              dayProjects.map((p) => (
+                <button
+                  key={p.blipPath}
+                  onClick={() => open(p.blipPath)}
+                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left font-mono text-[12px] text-muted hover:text-ink"
+                >
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: categoryColor(p.category) }}
+                  />
+                  <span className="flex-1 truncate">{p.name ?? 'Project'}</span>
+                  <span className="text-[10px] text-faint">P{p.priority}</span>
+                </button>
               ))
             )}
-          </div>
-
-          <div className="flex items-center gap-2 border-t border-rule px-3 py-2.5">
-            <Plus size={14} className="shrink-0 text-phosphor" />
-            <input
-              value={composer}
-              placeholder="ADD TO THIS DAY…"
-              onChange={(e) => setComposer(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commitComposer()
-              }}
-              className="flex-1 bg-transparent font-mono text-[12px] uppercase tracking-[0.06em] text-ink outline-none placeholder:text-faint"
-            />
           </div>
         </aside>
       )}
@@ -218,26 +157,28 @@ export function CalendarView(): JSX.Element {
 
 function DayCell({
   cell,
-  tasks,
+  projects,
   selected,
   dragOver,
   onSelect,
+  onOpen,
   onDragEnter,
   onDragLeave,
   onDrop
 }: {
   cell: CalendarDay
-  tasks: Task[]
+  projects: ProjectRecord[]
   selected: boolean
   dragOver: boolean
   onSelect: () => void
+  onOpen: (blipPath: string) => void
   onDragEnter: () => void
   onDragLeave: () => void
   onDrop: (e: React.DragEvent) => void
 }): JSX.Element {
   const MAX = 3
-  const shown = tasks.slice(0, MAX)
-  const overflow = tasks.length - shown.length
+  const shown = projects.slice(0, MAX)
+  const overflow = projects.length - shown.length
 
   return (
     <button
@@ -254,38 +195,32 @@ function DayCell({
     >
       <span
         className={`mb-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center self-start font-term text-[15px] leading-none ${
-          cell.isToday
-            ? 'rounded-sm bg-phosphor text-black shadow-glow'
-            : cell.isWeekend
-              ? 'text-faint'
-              : 'text-ink'
+          cell.isToday ? 'rounded-sm bg-phosphor text-black shadow-glow' : cell.isWeekend ? 'text-faint' : 'text-ink'
         }`}
       >
         {cell.day}
       </span>
-
       <span className="flex min-h-0 flex-col gap-[3px] overflow-hidden">
-        {shown.map((t) => (
+        {shown.map((p) => (
           <span
-            key={t.id}
+            key={p.blipPath}
             draggable
             onDragStart={(e) => {
-              e.dataTransfer.setData(TASK_DRAG_MIME, t.id)
+              e.dataTransfer.setData(BLIP_DRAG_MIME, p.blipPath)
               e.dataTransfer.effectAllowed = 'move'
             }}
-            onClick={(e) => e.stopPropagation()}
-            title={t.title}
-            className={`flex items-center gap-1 rounded-sm border border-ruleDim bg-black/40 px-1 py-[1px] font-mono text-[10px] leading-tight ${
-              t.completed ? 'text-faint line-through' : 'text-ink'
-            }`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpen(p.blipPath)
+            }}
+            title={p.name}
+            className="flex items-center gap-1 rounded-sm border border-ruleDim bg-black/40 px-1 py-[1px] font-mono text-[10px] leading-tight text-ink"
           >
-            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${PRIORITY_DOT[t.priority]}`} />
-            <span className="truncate">{t.title}</span>
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: categoryColor(p.category) }} />
+            <span className="truncate">{p.name ?? 'Project'}</span>
           </span>
         ))}
-        {overflow > 0 && (
-          <span className="px-1 font-mono text-[10px] text-phosphor">+{overflow} more</span>
-        )}
+        {overflow > 0 && <span className="px-1 font-mono text-[10px] text-phosphor">+{overflow} more</span>}
       </span>
     </button>
   )

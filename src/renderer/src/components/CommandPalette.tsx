@@ -1,18 +1,19 @@
 import { Command } from 'cmdk'
 import {
+  AlarmClock,
   CalendarRange,
-  CheckSquare,
-  Eye,
+  FolderPlus,
   Hash,
   Inbox,
+  LayoutGrid,
   Monitor,
-  Moon,
   Plus,
   Radar,
   RotateCcw,
   ScrollText,
   Sun
 } from 'lucide-react'
+import { categoryColor } from '../lib/projectRadar'
 import { useStore, type View } from '../store/useStore'
 
 const itemCls =
@@ -29,17 +30,28 @@ export function CommandPalette(): JSX.Element {
   const open = useStore((s) => s.paletteOpen)
   const projects = useStore((s) => s.projects)
   const crt = useStore((s) => s.crtEffects)
-  const showCompleted = useStore((s) => s.showCompleted)
-  const { setPaletteOpen, setView, setQuickAddOpen, toggleCrt, toggleShowCompleted, resetRadarLayout } =
-    useStore.getState()
+  const {
+    setPaletteOpen,
+    setView,
+    setSelectedBlip,
+    setQuickAddOpen,
+    toggleCrt,
+    resetRadarLayout,
+    adoptFolder,
+    addWorkspaceRoot
+  } = useStore.getState()
 
   const go = (view: View): void => {
     setView(view)
     setPaletteOpen(false)
   }
-
   const run = (fn: () => void): void => {
     fn()
+    setPaletteOpen(false)
+  }
+  const openProject = (blipPath: string): void => {
+    setView({ kind: 'radar' })
+    setSelectedBlip(blipPath)
     setPaletteOpen(false)
   }
 
@@ -65,27 +77,18 @@ export function CommandPalette(): JSX.Element {
 
         <Command.Group heading="Actions" className={groupCls}>
           <Command.Item className={itemCls} onSelect={() => run(() => setQuickAddOpen(true))}>
-            <Plus size={16} /> New task
+            <Plus size={16} /> Quick capture
           </Command.Item>
-          <Command.Item
-            value="toggle crt effects scanlines"
-            className={itemCls}
-            onSelect={() => run(toggleCrt)}
-          >
+          <Command.Item value="adopt folder create blip.md" className={itemCls} onSelect={() => run(adoptFolder)}>
+            <FolderPlus size={16} /> Adopt a folder
+          </Command.Item>
+          <Command.Item value="add workspace root scan" className={itemCls} onSelect={() => run(addWorkspaceRoot)}>
+            <Plus size={16} /> Add workspace root
+          </Command.Item>
+          <Command.Item value="toggle crt effects scanlines" className={itemCls} onSelect={() => run(toggleCrt)}>
             <Monitor size={16} /> CRT effects: {crt ? 'on' : 'off'}
           </Command.Item>
-          <Command.Item
-            value="toggle completed tasks visibility"
-            className={itemCls}
-            onSelect={() => run(toggleShowCompleted)}
-          >
-            <Eye size={16} /> Completed in list: {showCompleted ? 'shown' : 'hidden'}
-          </Command.Item>
-          <Command.Item
-            value="reset radar layout blip positions angles"
-            className={itemCls}
-            onSelect={() => run(resetRadarLayout)}
-          >
+          <Command.Item value="reset radar layout pinned angles" className={itemCls} onSelect={() => run(resetRadarLayout)}>
             <RotateCcw size={16} /> Reset radar layout
           </Command.Item>
         </Command.Group>
@@ -95,22 +98,22 @@ export function CommandPalette(): JSX.Element {
             <Radar size={16} /> Radar
           </Command.Item>
           <Command.Item className={itemCls} onSelect={() => go({ kind: 'today' })}>
-            <Sun size={16} /> Today
+            <Sun size={16} /> Due Soon
           </Command.Item>
           <Command.Item className={itemCls} onSelect={() => go({ kind: 'calendar' })}>
             <CalendarRange size={16} /> Calendar
           </Command.Item>
+          <Command.Item className={itemCls} onSelect={() => go({ kind: 'logbook' })}>
+            <ScrollText size={16} /> Logbook
+          </Command.Item>
+          <Command.Item className={itemCls} onSelect={() => go({ kind: 'neglected' })}>
+            <AlarmClock size={16} /> Neglected
+          </Command.Item>
           <Command.Item className={itemCls} onSelect={() => go({ kind: 'inbox' })}>
             <Inbox size={16} /> Inbox
           </Command.Item>
-          <Command.Item className={itemCls} onSelect={() => go({ kind: 'snoozed' })}>
-            <Moon size={16} /> Snoozed
-          </Command.Item>
-          <Command.Item className={itemCls} onSelect={() => go({ kind: 'completed' })}>
-            <CheckSquare size={16} /> Completed
-          </Command.Item>
-          <Command.Item className={itemCls} onSelect={() => go({ kind: 'logbook' })}>
-            <ScrollText size={16} /> Logbook
+          <Command.Item className={itemCls} onSelect={() => go({ kind: 'all' })}>
+            <LayoutGrid size={16} /> All Projects
           </Command.Item>
         </Command.Group>
 
@@ -118,12 +121,12 @@ export function CommandPalette(): JSX.Element {
           <Command.Group heading="Projects" className={groupCls}>
             {projects.map((p) => (
               <Command.Item
-                key={p.id}
+                key={p.blipPath}
                 value={`project ${p.name}`}
                 className={itemCls}
-                onSelect={() => go({ kind: 'project', id: p.id })}
+                onSelect={() => openProject(p.blipPath)}
               >
-                <Hash size={16} style={{ color: p.color }} /> {p.name}
+                <Hash size={16} style={{ color: categoryColor(p.category) }} /> {p.name ?? 'Project'}
               </Command.Item>
             ))}
           </Command.Group>

@@ -33,10 +33,16 @@ export function isFuture(iso: string | undefined, ref: Date = new Date()): boole
   return new Date(iso).getTime() > ref.getTime()
 }
 
+/** Parse a bare `YYYY-MM-DD` as a *local* calendar day; full datetimes pass through. */
+export function parseDateLocal(s: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(s)
+}
+
 /** Whole-day signed distance from today to a date (negative = past). null if no date. */
 export function daysFromToday(iso: string | undefined, ref: Date = new Date()): number | null {
   if (!iso) return null
-  return dayDiff(ref, new Date(iso))
+  return dayDiff(ref, parseDateLocal(iso))
 }
 
 const TIME_FMT = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })

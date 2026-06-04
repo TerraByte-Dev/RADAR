@@ -1,27 +1,27 @@
 import { create } from 'zustand'
-import type { DueDate, Priority, Project, Subtask, Task } from '@shared/types'
-import type { ParsedQuickAdd } from '../lib/nlp'
+import type {
+  BlipFieldPatch,
+  BlipTaskOp,
+  ProjectRecord,
+  RadarConfig
+} from '@shared/radar'
+import { parseQuickAdd } from '../lib/nlp'
 import { addMonths, currentMonth, dayKey, type YearMonth } from '../lib/date'
-import { nextProjectColor } from '../lib/palette'
 
 export type View =
   | { kind: 'radar' }
-  | { kind: 'inbox' }
   | { kind: 'today' }
-  | { kind: 'upcoming' }
-  | { kind: 'snoozed' }
-  | { kind: 'completed' }
-  | { kind: 'logbook' }
   | { kind: 'calendar' }
-  | { kind: 'project'; id: string }
+  | { kind: 'logbook' }
+  | { kind: 'neglected' }
+  | { kind: 'inbox' }
+  | { kind: 'all' }
 
 /* ── Renderer-local UI preferences (persisted to localStorage) ── */
-const SETTINGS_KEY = 'todoplus.settings'
+const SETTINGS_KEY = 'radar.settings'
 
 interface PersistedSettings {
-  /** CRT scanlines / vignette / flicker overlay. */
   crtEffects: boolean
-  /** Keep completed tasks struck-through in their list (vs. hiding them). */
   showCompleted: boolean
 }
 
@@ -40,33 +40,39 @@ function saveSettings(s: PersistedSettings): void {
   try {
     if (typeof localStorage !== 'undefined') localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
   } catch {
-    /* persistence is best-effort */
+    /* best-effort */
   }
 }
 
 /** Boot splash plays once per real app launch (survives HMR, resets on relaunch). */
 function bootAlreadySeen(): boolean {
   try {
-    return typeof sessionStorage !== 'undefined' && sessionStorage.getItem('todoplus.boot') === '1'
+    return typeof sessionStorage !== 'undefined' && sessionStorage.getItem('radar.boot') === '1'
   } catch {
     return false
   }
 }
 
+/** Replace (or append) a project record by its blipPath. */
+function replace(list: ProjectRecord[], rec: ProjectRecord): ProjectRecord[] {
+  const i = list.findIndex((p) => p.blipPath === rec.blipPath)
+  if (i < 0) return [...list, rec]
+  const next = list.slice()
+  next[i] = rec
+  return next
+}
+
 interface StoreState {
-  tasks: Task[]
-  projects: Project[]
+  projects: ProjectRecord[]
+  config: RadarConfig | null
   loaded: boolean
+  watching: boolean
 
   // UI state
   view: View
-  selectedTaskId: string | null
-  expandedTaskId: string | null
+  selectedBlip: string | null // blipPath of the selected radar contact
   quickAddOpen: boolean
   paletteOpen: boolean
-
-  // Radar UI state
-  radarSelectedId: string | null
 
   // Calendar UI state
   calendarMonth: YearMonth
@@ -79,65 +85,44 @@ interface StoreState {
 
   init(): Promise<void>
   setView(view: View): void
-  setSelectedTask(id: string | null): void
-  toggleExpanded(id: string): void
+  setSelectedBlip(blipPath: string | null): void
   setQuickAddOpen(open: boolean): void
   setPaletteOpen(open: boolean): void
 
-  // Radar
-  setRadarSelected(id: string | null): void
-  /** Pin (or clear, with undefined) a blip's manual radar angle — visual only. */
-  setRadarAngle(id: string, angle: number | undefined): Promise<void>
-  /** Clear every manual radar angle so all blips re-join the auto layout. */
-  resetRadarLayout(): Promise<void>
-
-  // Calendar navigation
   calendarPrevMonth(): void
   calendarNextMonth(): void
   calendarGoToday(): void
   setCalendarSelectedDay(iso: string | null): void
 
-  // Preferences
   toggleCrt(): void
   toggleShowCompleted(): void
   finishBoot(): void
 
-  addTaskFromParsed(parsed: ParsedQuickAdd): Promise<Task>
-  toggleComplete(id: string): Promise<void>
-  patchTask(id: string, patch: Partial<Task>): Promise<void>
-  setPriority(id: string, priority: Priority): Promise<void>
-  setProject(id: string, projectId: string | null): Promise<void>
-  setDue(id: string, due: DueDate | undefined): Promise<void>
-  deleteTask(id: string): Promise<void>
+  // Project (BLIP.md) mutations — every write goes through the engine via IPC.
+  setFields(blipPath: string, patch: BlipFieldPatch): Promise<void>
+  taskOp(blipPath: string, op: BlipTaskOp): Promise<void>
+  handoff(blipPath: string, lines: string[], next?: string): Promise<void>
+  /** Pin (number) or clear (null) a blip's manual radar angle — visual only. */
+  setRadarAngle(blipPath: string, angle: number | null): Promise<void>
+  resetRadarLayout(): Promise<void>
 
-  // Follow-up
-  toggleStar(id: string): Promise<void>
-  setNotes(id: string, notes: string): Promise<void>
-  addSubtask(id: string, title: string): Promise<void>
-  toggleSubtask(id: string, subId: string): Promise<void>
-  deleteSubtask(id: string, subId: string): Promise<void>
-  snooze(id: string, untilISO: string): Promise<void>
-  unsnooze(id: string): Promise<void>
-  addActivityNote(id: string, text: string): Promise<void>
-
-  addProject(name: string, color?: string): Promise<Project>
-  renameProject(id: string, name: string): Promise<void>
-  recolorProject(id: string, color: string): Promise<void>
-  deleteProject(id: string): Promise<void>
+  // Capture + workspace
+  capture(raw: string): Promise<void>
+  addWorkspaceRoot(): Promise<void>
+  removeWorkspaceRoot(root: string): Promise<void>
+  adoptFolder(): Promise<void>
 }
 
 export const useStore = create<StoreState>((set, get) => ({
-  tasks: [],
   projects: [],
+  config: null,
   loaded: false,
+  watching: false,
 
   view: { kind: 'radar' },
-  selectedTaskId: null,
-  expandedTaskId: null,
+  selectedBlip: null,
   quickAddOpen: false,
   paletteOpen: false,
-
-  radarSelectedId: null,
 
   calendarMonth: currentMonth(),
   calendarSelectedDay: null,
@@ -147,35 +132,18 @@ export const useStore = create<StoreState>((set, get) => ({
   bootDone: bootAlreadySeen(),
 
   async init() {
-    const data = await window.api.load()
-    set({ tasks: data.tasks, projects: data.projects, loaded: true })
-  },
-
-  setView: (view) => set({ view, selectedTaskId: null }),
-  setSelectedTask: (selectedTaskId) => set({ selectedTaskId }),
-  toggleExpanded: (id) =>
-    set((s) => ({
-      expandedTaskId: s.expandedTaskId === id ? null : id,
-      selectedTaskId: id
-    })),
-  setQuickAddOpen: (quickAddOpen) => set({ quickAddOpen }),
-  setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
-
-  setRadarSelected: (radarSelectedId) => set({ radarSelectedId }),
-
-  async setRadarAngle(id, angle) {
-    // Visual-only; a failed write (e.g. the task was deleted in another pane) is harmless.
-    try {
-      await get().patchTask(id, { radarAngle: angle })
-    } catch {
-      /* best-effort */
+    const [projects, config] = await Promise.all([window.radar.scan(), window.radar.getConfig()])
+    set({ projects, config, loaded: true })
+    if (!get().watching) {
+      window.radar.onProjectsChanged((next) => set({ projects: next }))
+      set({ watching: true })
     }
   },
-  async resetRadarLayout() {
-    const pinned = get().tasks.filter((t) => t.radarAngle != null)
-    // allSettled: never reject if a task vanished mid-clear.
-    await Promise.allSettled(pinned.map((t) => get().patchTask(t.id, { radarAngle: undefined })))
-  },
+
+  setView: (view) => set({ view, selectedBlip: null }),
+  setSelectedBlip: (selectedBlip) => set({ selectedBlip }),
+  setQuickAddOpen: (quickAddOpen) => set({ quickAddOpen }),
+  setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
 
   calendarPrevMonth: () => set((s) => ({ calendarMonth: addMonths(s.calendarMonth, -1) })),
   calendarNextMonth: () => set((s) => ({ calendarMonth: addMonths(s.calendarMonth, 1) })),
@@ -197,130 +165,81 @@ export const useStore = create<StoreState>((set, get) => ({
     }),
   finishBoot: () => {
     try {
-      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('todoplus.boot', '1')
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('radar.boot', '1')
     } catch {
       /* ignore */
     }
     set({ bootDone: true })
   },
 
-  async addTaskFromParsed(parsed) {
-    // Resolve the project name to an existing project (case-insensitive) or create one.
-    let projectId: string | null = null
-    if (parsed.projectName) {
-      const existing = get().projects.find(
-        (p) => p.name.toLowerCase() === parsed.projectName!.toLowerCase()
-      )
-      projectId = existing ? existing.id : (await get().addProject(parsed.projectName)).id
-    } else if (get().view.kind === 'project') {
-      // Adding from within a project view defaults the task to that project.
-      projectId = (get().view as { kind: 'project'; id: string }).id
+  async setFields(blipPath, patch) {
+    const rec = await window.radar.setFields(blipPath, patch)
+    set((s) => ({ projects: replace(s.projects, rec) }))
+  },
+
+  async taskOp(blipPath, op) {
+    const rec = await window.radar.task(blipPath, op)
+    set((s) => ({ projects: replace(s.projects, rec) }))
+  },
+
+  async handoff(blipPath, lines, next) {
+    const rec = await window.radar.handoff(blipPath, lines, next)
+    set((s) => ({ projects: replace(s.projects, rec) }))
+  },
+
+  async setRadarAngle(blipPath, angle) {
+    // Visual-only; a failed write (file vanished, etc.) is harmless.
+    try {
+      await get().setFields(blipPath, { radar_angle: angle })
+    } catch {
+      /* best-effort */
     }
-
-    const task = await window.api.createTask({
-      title: parsed.title || 'Untitled',
-      priority: parsed.priority,
-      projectId,
-      tags: parsed.tags,
-      due: parsed.due
-    })
-    set((s) => ({ tasks: [...s.tasks, task] }))
-    return task
   },
 
-  async toggleComplete(id) {
-    const task = get().tasks.find((t) => t.id === id)
-    if (!task) return
-    await get().patchTask(id, { completed: !task.completed })
+  async resetRadarLayout() {
+    const pinned = get().projects.filter((p) => p.radar_angle != null)
+    await Promise.allSettled(pinned.map((p) => get().setFields(p.blipPath, { radar_angle: null })))
   },
 
-  async patchTask(id, patch) {
-    const updated = await window.api.updateTask(id, patch)
-    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? updated : t)) }))
+  async capture(raw) {
+    const parsed = parseQuickAdd(raw)
+    if (!parsed.title) return
+    const text = parsed.due ? `${parsed.title} (due ${parsed.due.date.slice(0, 10)})` : parsed.title
+    const match = parsed.projectName
+      ? get().projects.find(
+          (p) => (p.name ?? '').toLowerCase() === parsed.projectName!.toLowerCase()
+        )
+      : undefined
+    if (match) {
+      await get().taskOp(match.blipPath, { action: 'add', text })
+    } else {
+      const rec = await window.radar.inboxAddTask(text)
+      set((s) => ({ projects: replace(s.projects, rec) }))
+    }
   },
 
-  setPriority: (id, priority) => get().patchTask(id, { priority }),
-  setProject: (id, projectId) => get().patchTask(id, { projectId }),
-  setDue: (id, due) => get().patchTask(id, { due }),
+  async addWorkspaceRoot() {
+    const dir = await window.radar.pickFolder()
+    if (!dir) return
+    const config = await window.radar.addRoot(dir)
+    set({ config })
+    // The main process pushes a fresh scan via onProjectsChanged.
+  },
 
-  async deleteTask(id) {
-    await window.api.deleteTask(id)
+  async removeWorkspaceRoot(root) {
+    const config = await window.radar.removeRoot(root)
+    set({ config })
+  },
+
+  async adoptFolder() {
+    const dir = await window.radar.pickFolder()
+    if (!dir) return
+    const rec = await window.radar.initProject(dir, {})
+    await window.radar.addRoot(dir)
     set((s) => ({
-      tasks: s.tasks.filter((t) => t.id !== id),
-      selectedTaskId: s.selectedTaskId === id ? null : s.selectedTaskId,
-      expandedTaskId: s.expandedTaskId === id ? null : s.expandedTaskId
-    }))
-  },
-
-  toggleStar(id) {
-    const task = get().tasks.find((t) => t.id === id)
-    if (!task) return Promise.resolve()
-    return get().patchTask(id, { starred: !task.starred })
-  },
-
-  setNotes: (id, notes) => get().patchTask(id, { notes }),
-
-  addSubtask(id, title) {
-    const task = get().tasks.find((t) => t.id === id)
-    if (!task || !title.trim()) return Promise.resolve()
-    const next: Subtask[] = [
-      ...task.subtasks,
-      { id: crypto.randomUUID(), title: title.trim(), completed: false }
-    ]
-    return get().patchTask(id, { subtasks: next })
-  },
-
-  toggleSubtask(id, subId) {
-    const task = get().tasks.find((t) => t.id === id)
-    if (!task) return Promise.resolve()
-    const next = task.subtasks.map((s) =>
-      s.id === subId ? { ...s, completed: !s.completed } : s
-    )
-    return get().patchTask(id, { subtasks: next })
-  },
-
-  deleteSubtask(id, subId) {
-    const task = get().tasks.find((t) => t.id === id)
-    if (!task) return Promise.resolve()
-    return get().patchTask(id, { subtasks: task.subtasks.filter((s) => s.id !== subId) })
-  },
-
-  snooze: (id, untilISO) => get().patchTask(id, { snoozedUntil: untilISO }),
-  unsnooze: (id) => get().patchTask(id, { snoozedUntil: undefined }),
-
-  async addActivityNote(id, text) {
-    if (!text.trim()) return
-    const updated = await window.api.addActivityNote(id, text.trim())
-    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? updated : t)) }))
-  },
-
-  async addProject(name, color) {
-    const project = await window.api.createProject({
-      name,
-      // Auto-pick the least-used palette color so new projects stay distinct.
-      color: color ?? nextProjectColor(get().projects.map((p) => p.color))
-    })
-    set((s) => ({ projects: [...s.projects, project] }))
-    return project
-  },
-
-  async renameProject(id, name) {
-    const updated = await window.api.updateProject(id, { name })
-    set((s) => ({ projects: s.projects.map((p) => (p.id === id ? updated : p)) }))
-  },
-
-  async recolorProject(id, color) {
-    const updated = await window.api.updateProject(id, { color })
-    set((s) => ({ projects: s.projects.map((p) => (p.id === id ? updated : p)) }))
-  },
-
-  async deleteProject(id) {
-    await window.api.deleteProject(id)
-    set((s) => ({
-      projects: s.projects.filter((p) => p.id !== id),
-      // Tasks were re-homed to the Inbox in the main process.
-      tasks: s.tasks.map((t) => (t.projectId === id ? { ...t, projectId: null } : t)),
-      view: s.view.kind === 'project' && s.view.id === id ? { kind: 'today' } : s.view
+      projects: replace(s.projects, rec),
+      view: { kind: 'radar' },
+      selectedBlip: rec.blipPath
     }))
   }
 }))
