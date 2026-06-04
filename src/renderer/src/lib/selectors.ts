@@ -44,7 +44,7 @@ export function projectsForView(
   view: View,
   ref: Date = new Date()
 ): ProjectRecord[] {
-  const live = projects.filter((p) => p.status !== 'archived')
+  const live = projects.filter((p) => p.status !== 'archived' && !p.ghost)
   switch (view.kind) {
     case 'today': {
       // "Due soon": a real deadline within a week (incl. overdue) or a today/week horizon.

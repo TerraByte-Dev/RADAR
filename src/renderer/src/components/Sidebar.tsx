@@ -72,7 +72,7 @@ export function Sidebar(): JSX.Element {
   const crt = useStore((s) => s.crtEffects)
   const { setView, setSelectedBlip, toggleCrt, adoptFolder, addWorkspaceRoot } = useStore.getState()
 
-  const live = useMemo(() => projects.filter((p) => p.status !== 'archived'), [projects])
+  const live = useMemo(() => projects.filter((p) => p.status !== 'archived' && !p.ghost), [projects])
   const counts = useMemo(
     () => ({
       radar: live.length,

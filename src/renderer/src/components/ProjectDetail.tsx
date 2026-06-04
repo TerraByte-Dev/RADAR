@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, ExternalLink, FolderOpen, RotateCcw, X } from 'lucide-react'
+import { Check, ExternalLink, FolderOpen, RotateCcw, Sparkles, X } from 'lucide-react'
 import type { BlipStatus, Horizon, ProjectRecord } from '@shared/radar'
 import { BLIP_STATUSES, HORIZONS } from '@shared/radar'
 import { parseSessionLog } from '../lib/selectors'
@@ -46,7 +46,7 @@ export function ProjectDetail({
   project: ProjectRecord
   onClose: () => void
 }): JSX.Element {
-  const { setFields, taskOp } = useStore.getState()
+  const { setFields, taskOp, adoptGhost } = useStore.getState()
   const [newTask, setNewTask] = useState('')
   const p = project
   const log = parseSessionLog(p.sessionLog)
@@ -64,7 +64,7 @@ export function ProjectDetail({
           <div className="min-w-0 flex-1">
             <div className="truncate font-mono text-[13px] text-ink">{p.name ?? 'Project'}</div>
             <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
-              {p.error ? 'SIGNAL LOST' : `${p.status} · ${projectRelativeDeadline(p)}`}
+              {p.error ? 'SIGNAL LOST' : p.ghost ? 'ghost · un-adopted' : `${p.status} · ${projectRelativeDeadline(p)}`}
             </div>
           </div>
           <button onClick={onClose} aria-label="Close" className="metal-key h-6 w-6 shrink-0">
@@ -79,7 +79,7 @@ export function ProjectDetail({
             <ExternalLink size={9} /> editor
           </button>
           <button
-            onClick={() => window.radar.reveal(p.blipPath)}
+            onClick={() => window.radar.reveal(p.ghost ? p.path : p.blipPath)}
             className="inline-flex items-center gap-1 border border-rule px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-faint hover:border-phosphor hover:text-phosphor"
           >
             <FolderOpen size={9} /> reveal
@@ -95,7 +95,22 @@ export function ProjectDetail({
         </div>
       </header>
 
-      {p.error ? (
+      {p.ghost ? (
+        <div className="px-3 py-4">
+          <div className="font-mono text-[11px] leading-relaxed text-muted">
+            Un-adopted repo — RADAR found{' '}
+            <span className="text-phosphor">{(p.ghostHints ?? []).join(' · ') || 'a project'}</span> here
+            but no <span className="text-phosphor">BLIP.md</span> yet. Adopt it to start tracking — this
+            writes a fresh BLIP.md and touches nothing else.
+          </div>
+          <button
+            onClick={() => adoptGhost(p)}
+            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 border border-phosphor bg-phosphor/[0.08] py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-phosphor transition-colors hover:bg-phosphor/20"
+          >
+            <Sparkles size={12} /> Adopt project
+          </button>
+        </div>
+      ) : p.error ? (
         <div className="px-3 py-3 font-mono text-[11px] leading-relaxed text-p1">
           BLIP.md could not be parsed — it is left untouched (never overwritten). Fix it by hand, then
           it returns to the radar.

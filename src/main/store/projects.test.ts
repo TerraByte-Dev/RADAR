@@ -29,6 +29,9 @@ beforeAll(async () => {
   await writeFile(join(root, 'BLIP.md'), VALID.replace('name: Alpha', 'name: Root'))
   await mkdir(join(root, 'sub', 'alpha'), { recursive: true })
   await writeFile(join(root, 'sub', 'alpha', 'BLIP.md'), VALID)
+  // An un-adopted repo (.git, no BLIP.md) → a ghost blip.
+  await mkdir(join(root, 'ghostrepo', '.git'), { recursive: true })
+  await writeFile(join(root, 'ghostrepo', 'CLAUDE.md'), '# ghost')
   // These must be skipped by the scanner:
   await mkdir(join(root, 'node_modules', 'pkg'), { recursive: true })
   await writeFile(join(root, 'node_modules', 'pkg', 'BLIP.md'), VALID)
@@ -41,11 +44,16 @@ afterAll(async () => {
 })
 
 describe('scanProjects', () => {
-  it('finds BLIP.md projects, skipping node_modules and dot-dirs, sorted by name', async () => {
-    const projects = await scanProjects([root], 5)
-    const names = projects.map((p) => p.name)
-    expect(projects).toHaveLength(2)
-    expect(names).toEqual(['Alpha', 'Root']) // sorted, ignored dirs excluded
+  it('finds tracked BLIP.md projects, skipping node_modules and dot-dirs, sorted by name', async () => {
+    const tracked = (await scanProjects([root], 5)).filter((p) => !p.ghost).map((p) => p.name)
+    expect(tracked).toEqual(['Alpha', 'Root']) // sorted, ignored dirs excluded
+  })
+
+  it('surfaces an un-adopted repo as a ghost blip', async () => {
+    const ghost = (await scanProjects([root], 5)).find((p) => p.name === 'ghostrepo')!
+    expect(ghost.ghost).toBe(true)
+    expect(ghost.ghostHints).toContain('git')
+    expect(ghost.blipPath).toBe(join(root, 'ghostrepo', 'BLIP.md'))
   })
 
   it('maps the new radar fields onto the record', async () => {

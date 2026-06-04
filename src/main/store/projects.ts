@@ -29,34 +29,78 @@ const IGNORE = new Set([
   '.git'
 ])
 
-async function* walkForBlips(root: string, depth: number): AsyncGenerator<string> {
+interface Candidate {
+  dir: string
+  /** Present for a tracked project (has BLIP.md). */
+  blipPath?: string
+  /** Present for a ghost (an un-adopted repo: .git / CLAUDE.md / AGENTS.md, no BLIP.md). */
+  ghostHints?: string[]
+}
+
+/**
+ * Classify the tree. Every `BLIP.md` (at any depth) is a tracked project. A directory
+ * with a marker file but no `BLIP.md` is a **ghost** (adoptable with one click) — only
+ * the outermost ghost per subtree is surfaced, but nested tracked projects always are.
+ */
+async function* classify(dir: string, depth: number, insideGhost: boolean): AsyncGenerator<Candidate> {
   if (depth < 0) return
   let entries
   try {
-    entries = await readdir(root, { withFileTypes: true })
+    entries = await readdir(dir, { withFileTypes: true })
   } catch {
     return // unreadable dir — skip silently
   }
+  const files = new Set(entries.filter((e) => e.isFile()).map((e) => e.name))
+  const hasBlip = files.has('BLIP.md')
+  if (hasBlip) yield { dir, blipPath: join(dir, 'BLIP.md') }
+
+  let nowInside = insideGhost
+  if (!hasBlip && !insideGhost) {
+    const hints: string[] = []
+    if (entries.some((e) => e.isDirectory() && e.name === '.git')) hints.push('git')
+    if (files.has('CLAUDE.md')) hints.push('CLAUDE.md')
+    if (files.has('AGENTS.md')) hints.push('AGENTS.md')
+    if (hints.length) {
+      yield { dir, ghostHints: hints }
+      nowInside = true // don't surface nested ghosts inside this repo (still find nested BLIP.md)
+    }
+  }
+
   for (const e of entries) {
-    if (e.isDirectory()) {
-      if (IGNORE.has(e.name) || e.name.startsWith('.')) continue
-      yield* walkForBlips(join(root, e.name), depth - 1)
-    } else if (e.isFile() && e.name === 'BLIP.md') {
-      yield join(root, e.name)
+    if (e.isDirectory() && !IGNORE.has(e.name) && !e.name.startsWith('.')) {
+      yield* classify(join(dir, e.name), depth - 1, nowInside)
     }
   }
 }
 
-/** Walk every root for BLIP.md files and return one ProjectRecord each (deduped by path). */
+/** A placeholder record for an un-adopted repo; `blipPath` is where its BLIP.md would land. */
+function ghostRecord(dir: string, ghostHints: string[]): ProjectRecord {
+  return {
+    path: dir,
+    blipPath: join(dir, 'BLIP.md'),
+    name: basename(dir),
+    horizon: 'someday',
+    priority: 3,
+    category: '',
+    status: 'active',
+    tasks: [],
+    unknown: {},
+    ghost: true,
+    ghostHints
+  }
+}
+
+/** Scan every root for tracked projects (BLIP.md) and ghost blips (un-adopted repos). */
 export async function scanProjects(roots: string[], maxDepth = 5): Promise<ProjectRecord[]> {
-  const found = new Map<string, string>() // blipPath -> projectDir
+  const seen = new Set<string>()
+  const records: ProjectRecord[] = []
   for (const root of roots) {
-    for await (const blipPath of walkForBlips(root, maxDepth)) {
-      found.set(blipPath, join(blipPath, '..'))
+    for await (const c of classify(root, maxDepth, false)) {
+      if (seen.has(c.dir)) continue
+      seen.add(c.dir)
+      records.push(c.blipPath ? await readProject(c.blipPath, c.dir) : ghostRecord(c.dir, c.ghostHints!))
     }
   }
-  const records: ProjectRecord[] = []
-  for (const [blipPath, dir] of found) records.push(await readProject(blipPath, dir))
   return records.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
 }
 

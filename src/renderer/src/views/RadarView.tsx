@@ -324,47 +324,60 @@ export function RadarView(): JSX.Element {
         if (!reduce && proj.priority === 1) size += Math.sin(now / 380) * 0.7
         positions.set(proj.blipPath, { x, y, r: baseSize })
 
-        if (proj.status === 'shipped') ctx!.globalAlpha = 0.4
-
-        if (!reduce && passed(angle, prevSweep, sweep)) pings.set(proj.blipPath, now)
-        const pingAge = now - (pings.get(proj.blipPath) ?? -1e9)
-        if (pingAge < PING_MS) {
-          const t = pingAge / PING_MS
-          ctx!.beginPath()
-          ctx!.arc(x, y, size + t * 16, 0, 7)
-          ctx!.strokeStyle = hexA(color, (1 - t) * 0.6)
-          ctx!.lineWidth = 1.5
-          ctx!.stroke()
-        }
-
-        const ratio = taskRatio(proj)
-        if (ratio > 0) {
-          ctx!.beginPath()
-          ctx!.arc(x, y, size + 3, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2)
-          ctx!.strokeStyle = hexA(ACCENT, 0.85)
-          ctx!.lineWidth = 1.6
-          ctx!.stroke()
-        }
-
-        ctx!.beginPath()
-        ctx!.arc(x, y, size, 0, 7)
-        ctx!.fillStyle = color
-        ctx!.shadowColor = color
-        ctx!.shadowBlur = proj.status === 'blocked' && !reduce ? 6 + Math.sin(now / 200) * 6 : 9
-        ctx!.fill()
-        ctx!.shadowBlur = 0
-
-        // signal-lost: a dashed warning ring
-        if (proj.error) {
+        if (proj.ghost) {
+          // Un-adopted repo: a faint hollow dashed ring — a potential contact.
+          ctx!.globalAlpha = 0.6
           ctx!.setLineDash([2, 3])
           ctx!.beginPath()
-          ctx!.arc(x, y, size + 4, 0, 7)
-          ctx!.strokeStyle = hexA(SIGNAL_LOST, 0.8)
-          ctx!.lineWidth = 1.2
+          ctx!.arc(x, y, size, 0, 7)
+          ctx!.strokeStyle = hexA('#9bf5b8', 0.7)
+          ctx!.lineWidth = 1.3
           ctx!.stroke()
           ctx!.setLineDash([])
+          ctx!.globalAlpha = 1
+        } else {
+          if (proj.status === 'shipped') ctx!.globalAlpha = 0.4
+
+          if (!reduce && passed(angle, prevSweep, sweep)) pings.set(proj.blipPath, now)
+          const pingAge = now - (pings.get(proj.blipPath) ?? -1e9)
+          if (pingAge < PING_MS) {
+            const t = pingAge / PING_MS
+            ctx!.beginPath()
+            ctx!.arc(x, y, size + t * 16, 0, 7)
+            ctx!.strokeStyle = hexA(color, (1 - t) * 0.6)
+            ctx!.lineWidth = 1.5
+            ctx!.stroke()
+          }
+
+          const ratio = taskRatio(proj)
+          if (ratio > 0) {
+            ctx!.beginPath()
+            ctx!.arc(x, y, size + 3, -Math.PI / 2, -Math.PI / 2 + ratio * Math.PI * 2)
+            ctx!.strokeStyle = hexA(ACCENT, 0.85)
+            ctx!.lineWidth = 1.6
+            ctx!.stroke()
+          }
+
+          ctx!.beginPath()
+          ctx!.arc(x, y, size, 0, 7)
+          ctx!.fillStyle = color
+          ctx!.shadowColor = color
+          ctx!.shadowBlur = proj.status === 'blocked' && !reduce ? 6 + Math.sin(now / 200) * 6 : 9
+          ctx!.fill()
+          ctx!.shadowBlur = 0
+
+          // signal-lost: a dashed warning ring
+          if (proj.error) {
+            ctx!.setLineDash([2, 3])
+            ctx!.beginPath()
+            ctx!.arc(x, y, size + 4, 0, 7)
+            ctx!.strokeStyle = hexA(SIGNAL_LOST, 0.8)
+            ctx!.lineWidth = 1.2
+            ctx!.stroke()
+            ctx!.setLineDash([])
+          }
+          ctx!.globalAlpha = 1
         }
-        ctx!.globalAlpha = 1
 
         if (dragging) {
           const frac = Math.hypot(x - cx, y - cy) / R
@@ -528,6 +541,7 @@ export function RadarView(): JSX.Element {
             }
             const proj = projects.find((p) => p.blipPath === drag.id)
             if (!proj) return
+            if (proj.ghost) return // un-adopted — nothing to reschedule until it has a BLIP.md
             const { x, y } = toCanvas(e)
             const { cx, cy, R } = geomRef.current
             if (R <= 0) return
@@ -561,8 +575,12 @@ export function RadarView(): JSX.Element {
           <div className="pointer-events-none absolute bottom-5 left-1/2 z-10 -translate-x-1/2 border border-rule bg-black/80 px-3 py-1.5 text-center">
             <div className="font-mono text-[13px] text-ink">{hud.name ?? 'Project'}</div>
             <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
-              {hud.error ? 'SIGNAL LOST' : `P${hud.priority} · ${projectRelativeDeadline(hud)}`}
-              {hud.category && ` · ${hud.category}`}
+              {hud.error
+                ? 'SIGNAL LOST'
+                : hud.ghost
+                  ? 'GHOST · CLICK TO ADOPT'
+                  : `P${hud.priority} · ${projectRelativeDeadline(hud)}`}
+              {!hud.ghost && hud.category && ` · ${hud.category}`}
             </div>
           </div>
         )}

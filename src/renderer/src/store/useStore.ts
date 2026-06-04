@@ -111,6 +111,8 @@ interface StoreState {
   addWorkspaceRoot(): Promise<void>
   removeWorkspaceRoot(root: string): Promise<void>
   adoptFolder(): Promise<void>
+  /** Adopt a ghost blip in place — write its BLIP.md and turn it into a tracked project. */
+  adoptGhost(project: ProjectRecord): Promise<void>
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -241,5 +243,10 @@ export const useStore = create<StoreState>((set, get) => ({
       view: { kind: 'radar' },
       selectedBlip: rec.blipPath
     }))
+  },
+
+  async adoptGhost(project) {
+    const rec = await window.radar.initProject(project.path, { name: project.name })
+    set((s) => ({ projects: replace(s.projects, rec), selectedBlip: rec.blipPath }))
   }
 }))
