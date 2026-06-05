@@ -3,8 +3,10 @@ import type { ProjectRecord } from '@shared/radar'
 import {
   categoryColor,
   currentDayBucket,
+  datedDeadlineDays,
   daysUntilDeadline,
   deadlineForFrac,
+  deadlineWholeDays,
   isOverdueProject,
   prioSize,
   projectRadiusFrac,
@@ -40,6 +42,42 @@ describe('daysUntilDeadline', () => {
     expect(daysUntilDeadline(p({ horizon: 'today' }), REF)).toBe(0)
     expect(daysUntilDeadline(p({ horizon: 'week' }), REF)).toBe(7)
     expect(daysUntilDeadline(p({ horizon: 'someday' }), REF)).toBeNull()
+  })
+})
+
+describe('effective deadline (deadlines live on tasks)', () => {
+  it('a project with no deadline is positioned by its nearest incomplete task due', () => {
+    const tasked = p({
+      horizon: 'someday',
+      tasks: [
+        { text: 'later (due 2026-09-01)', done: false },
+        { text: 'soon (due 2026-06-06)', done: false }
+      ]
+    })
+    expect(datedDeadlineDays(tasked, REF)).toBe(3) // nearest = 2026-06-06
+    expect(daysUntilDeadline(tasked, REF)).toBe(3) // overrides the someday horizon
+    expect(deadlineWholeDays(tasked, REF)).toBe(3)
+    expect(projectRelativeDeadline(tasked, REF)).toBe('in 3d')
+  })
+
+  it('completed tasks do not pull the blip in', () => {
+    const done = p({ horizon: 'someday', tasks: [{ text: 'shipped (due 2026-06-04)', done: true }] })
+    expect(datedDeadlineDays(done, REF)).toBeNull() // no open dated task
+    expect(daysUntilDeadline(done, REF)).toBeNull() // → someday
+  })
+
+  it('uses the soonest of the hard deadline and the nearest task due', () => {
+    const both = p({ deadline: '2026-06-10', tasks: [{ text: 'milestone (due 2026-06-05)', done: false }] })
+    expect(datedDeadlineDays(both, REF)).toBe(2) // task (2026-06-05) sooner than deadline (2026-06-10)
+    const hardSooner = p({ deadline: '2026-06-04', tasks: [{ text: 'm (due 2026-06-20)', done: false }] })
+    expect(datedDeadlineDays(hardSooner, REF)).toBe(1) // hard deadline wins
+  })
+
+  it('an overdue TASK pulls the blip toward center but does not mark the whole project overdue', () => {
+    const lateTask = p({ horizon: 'someday', tasks: [{ text: 'oops (due 2026-06-01)', done: false }] })
+    expect(daysUntilDeadline(lateTask, REF)).toBe(-2) // sits in the bullseye
+    expect(isOverdueProject(lateTask, REF)).toBe(false) // reserved for the project's own hard deadline
+    expect(isOverdueProject(p({ deadline: '2026-06-01' }), REF)).toBe(true)
   })
 })
 

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
-import type { ProjectRecord } from '@shared/radar'
 import { buildMonthGrid, dayKey, monthLabel, WEEKDAY_LABELS, type CalendarDay } from '../lib/date'
-import { projectsByDeadlineKey, projectsOnDeadlineDay } from '../lib/selectors'
+import { calendarItemsByDay, calendarItemsOnDay, type CalendarItem } from '../lib/selectors'
 import { categoryColor } from '../lib/projectRadar'
+import { setTaskDue } from '../lib/taskDue'
 import { useStore } from '../store/useStore'
 
 const DAY_FMT = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
@@ -16,6 +16,13 @@ function isoToYMD(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+/** A dragged calendar entry — enough to reschedule the right thing on drop. */
+interface DragPayload {
+  blipPath: string
+  kind: CalendarItem['kind']
+  taskIndex?: number
+}
+
 export function CalendarView(): JSX.Element {
   const projects = useStore((s) => s.projects)
   const month = useStore((s) => s.calendarMonth)
@@ -26,6 +33,7 @@ export function CalendarView(): JSX.Element {
     calendarGoToday,
     setCalendarSelectedDay,
     setFields,
+    taskOp,
     setView,
     setSelectedBlip
   } = useStore.getState()
@@ -38,17 +46,33 @@ export function CalendarView(): JSX.Element {
   }, [])
 
   const grid = useMemo(() => buildMonthGrid(month), [month])
-  const byDay = useMemo(() => projectsByDeadlineKey(projects), [projects])
-  const dayProjects = useMemo(
-    () => (selectedDay ? projectsOnDeadlineDay(projects, selectedDay) : []),
+  const byDay = useMemo(() => calendarItemsByDay(projects), [projects])
+  const dayItems = useMemo(
+    () => (selectedDay ? calendarItemsOnDay(projects, selectedDay) : []),
     [projects, selectedDay]
   )
+
+  /** Move a dropped milestone (task `(due …)`) or hard deadline to the target day. */
+  function reschedule(payload: DragPayload, ymd: string): void {
+    if (payload.kind === 'deadline') {
+      setFields(payload.blipPath, { deadline: ymd })
+      return
+    }
+    const proj = projects.find((p) => p.blipPath === payload.blipPath)
+    const t = payload.taskIndex != null ? proj?.tasks[payload.taskIndex] : undefined
+    if (t) taskOp(payload.blipPath, { action: 'edit', ref: payload.taskIndex!, text: setTaskDue(t.text, ymd) })
+  }
 
   function onDrop(e: React.DragEvent, iso: string): void {
     e.preventDefault()
     setDragOver(null)
-    const blipPath = e.dataTransfer.getData(BLIP_DRAG_MIME)
-    if (blipPath) setFields(blipPath, { deadline: isoToYMD(iso) })
+    const raw = e.dataTransfer.getData(BLIP_DRAG_MIME)
+    if (!raw) return
+    try {
+      reschedule(JSON.parse(raw) as DragPayload, isoToYMD(iso))
+    } catch {
+      /* malformed payload — ignore */
+    }
   }
 
   function open(blipPath: string): void {
@@ -96,7 +120,7 @@ export function CalendarView(): JSX.Element {
                 <DayCell
                   key={cell.iso}
                   cell={cell}
-                  projects={byDay.get(cell.iso) ?? []}
+                  items={byDay.get(cell.iso) ?? []}
                   selected={selectedDay === cell.iso}
                   dragOver={dragOver === cell.iso}
                   onSelect={() => setCalendarSelectedDay(cell.iso)}
@@ -120,7 +144,7 @@ export function CalendarView(): JSX.Element {
                 {DAY_FMT.format(new Date(selectedDay))}
               </div>
               <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
-                {dayProjects.length} {dayProjects.length === 1 ? 'deadline' : 'deadlines'}
+                {dayItems.length} {dayItems.length === 1 ? 'item' : 'items'}
               </div>
             </div>
             <button onClick={() => setCalendarSelectedDay(null)} aria-label="Close day" className="metal-key h-6 w-6">
@@ -128,23 +152,28 @@ export function CalendarView(): JSX.Element {
             </button>
           </header>
           <div className="flex-1 overflow-y-auto px-2 py-2">
-            {dayProjects.length === 0 ? (
+            {dayItems.length === 0 ? (
               <p className="mt-10 text-center font-mono text-xs uppercase tracking-[0.12em] text-faint">
-                No deadlines.
+                Nothing due.
               </p>
             ) : (
-              dayProjects.map((p) => (
+              dayItems.map((it, i) => (
                 <button
-                  key={p.blipPath}
-                  onClick={() => open(p.blipPath)}
+                  key={`${it.blipPath}-${it.kind}-${it.taskIndex ?? 'd'}-${i}`}
+                  onClick={() => open(it.blipPath)}
                   className="flex w-full items-center gap-2 px-2 py-1.5 text-left font-mono text-[12px] text-muted hover:text-ink"
                 >
                   <span
                     className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ background: categoryColor(p.category) }}
+                    style={{ background: categoryColor(it.category) }}
                   />
-                  <span className="flex-1 truncate">{p.name ?? 'Project'}</span>
-                  <span className="text-[10px] text-faint">P{p.priority}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {it.label}
+                    {it.kind === 'task' && <span className="ml-1.5 text-faint">— {it.projectName}</span>}
+                  </span>
+                  <span className="shrink-0 text-[9px] uppercase tracking-[0.08em] text-faint">
+                    {it.kind === 'deadline' ? 'deadline' : 'task'}
+                  </span>
                 </button>
               ))
             )}
@@ -157,7 +186,7 @@ export function CalendarView(): JSX.Element {
 
 function DayCell({
   cell,
-  projects,
+  items,
   selected,
   dragOver,
   onSelect,
@@ -167,7 +196,7 @@ function DayCell({
   onDrop
 }: {
   cell: CalendarDay
-  projects: ProjectRecord[]
+  items: CalendarItem[]
   selected: boolean
   dragOver: boolean
   onSelect: () => void
@@ -177,8 +206,8 @@ function DayCell({
   onDrop: (e: React.DragEvent) => void
 }): JSX.Element {
   const MAX = 3
-  const shown = projects.slice(0, MAX)
-  const overflow = projects.length - shown.length
+  const shown = items.slice(0, MAX)
+  const overflow = items.length - shown.length
 
   return (
     <button
@@ -201,23 +230,28 @@ function DayCell({
         {cell.day}
       </span>
       <span className="flex min-h-0 flex-col gap-[3px] overflow-hidden">
-        {shown.map((p) => (
+        {shown.map((it, i) => (
           <span
-            key={p.blipPath}
+            key={`${it.blipPath}-${it.kind}-${it.taskIndex ?? 'd'}-${i}`}
             draggable
             onDragStart={(e) => {
-              e.dataTransfer.setData(BLIP_DRAG_MIME, p.blipPath)
+              e.dataTransfer.setData(
+                BLIP_DRAG_MIME,
+                JSON.stringify({ blipPath: it.blipPath, kind: it.kind, taskIndex: it.taskIndex })
+              )
               e.dataTransfer.effectAllowed = 'move'
             }}
             onClick={(e) => {
               e.stopPropagation()
-              onOpen(p.blipPath)
+              onOpen(it.blipPath)
             }}
-            title={p.name}
-            className="flex items-center gap-1 rounded-sm border border-ruleDim bg-black/40 px-1 py-[1px] font-mono text-[10px] leading-tight text-ink"
+            title={it.kind === 'task' ? `${it.label} — ${it.projectName}` : it.label}
+            className={`flex items-center gap-1 rounded-sm border bg-black/40 px-1 py-[1px] font-mono text-[10px] leading-tight text-ink ${
+              it.kind === 'deadline' ? 'border-p1/40' : 'border-ruleDim'
+            }`}
           >
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: categoryColor(p.category) }} />
-            <span className="truncate">{p.name ?? 'Project'}</span>
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: categoryColor(it.category) }} />
+            <span className="truncate">{it.label}</span>
           </span>
         ))}
         {overflow > 0 && <span className="px-1 font-mono text-[10px] text-phosphor">+{overflow} more</span>}

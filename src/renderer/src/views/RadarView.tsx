@@ -28,6 +28,7 @@ import {
 import {
   categoryColor,
   currentDayBucket,
+  deadlineWholeDays,
   isOverdueProject,
   prioSize,
   projectLayoutFrac,
@@ -35,7 +36,7 @@ import {
   projectRelativeDeadline,
   scheduleForDrop
 } from '../lib/projectRadar'
-import { taskDueDate, taskText, taskUrgency } from '../lib/taskDue'
+import { drivingTask, setTaskDue, taskDueDate, taskText, taskUrgency } from '../lib/taskDue'
 import { daysFromToday } from '../lib/date'
 import { isNeglected, projectsOnRadar } from '../lib/selectors'
 import { useStore } from '../store/useStore'
@@ -82,7 +83,7 @@ function drawShip(ctx: CanvasRenderingContext2D, x: number, y: number, s: number
 export function RadarView(): JSX.Element {
   const projects = useStore((s) => s.projects)
   const selectedBlip = useStore((s) => s.selectedBlip)
-  const { setSelectedBlip, setFields, resetRadarLayout } = useStore.getState()
+  const { setSelectedBlip, setFields, taskOp, resetRadarLayout } = useStore.getState()
 
   const [hudId, setHudId] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; blipPath: string | null } | null>(null)
@@ -428,7 +429,10 @@ export function RadarView(): JSX.Element {
         const sig =
           `${R.toFixed(1)}|${wedgeSpacing.toFixed(2)}|` +
           contacts
-            .map((p) => `${p.blipPath},${p.category},${p.radar_angle ?? '-'},${p.deadline ?? p.horizon},${p.priority}`)
+            .map(
+              (p) =>
+                `${p.blipPath},${p.category},${p.radar_angle ?? '-'},${deadlineWholeDays(p, ref) ?? 's'},${p.priority}`
+            )
             .join(';')
         if (layoutCacheRef.current.sig !== sig) {
           layoutCacheRef.current = {
@@ -667,8 +671,8 @@ export function RadarView(): JSX.Element {
               Radar
             </h1>
             <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
-              <span className="led-dot" /> {contacts.length} projects · distance = deadline · drag to
-              place · right-click resets
+              <span className="led-dot" /> {contacts.length} projects · distance = next deadline (task
+              or project) · drag to reschedule · right-click resets
             </div>
             {hasPinned && (
               <button
@@ -735,17 +739,27 @@ export function RadarView(): JSX.Element {
             const dy = y - cy
             const r = Math.hypot(dx, dy)
             const frac = r / R
-            const patch: BlipFieldPatch = {
-              radar_angle: r > MIN_PIN_PX ? angleFromPoint(dx, dy) : null
-            }
+            const now = new Date()
+            const angle: number | null = r > MIN_PIN_PX ? angleFromPoint(dx, dy) : null
             // Reschedule only when the drop lands in a different day-bucket (a pure angular
-            // nudge keeps the schedule). The someday band pins horizon=someday so it stays put.
-            if (daysFromFrac(frac) !== currentDayBucket(proj, new Date())) {
-              const sched = scheduleForDrop(frac)
-              patch.deadline = sched.deadline
-              if (sched.horizon) patch.horizon = sched.horizon
+            // nudge keeps the schedule). The someday band → null (clears the date).
+            const rescheduled = daysFromFrac(frac) !== currentDayBucket(proj, now)
+            const sched = rescheduled ? scheduleForDrop(frac) : null
+            // Deadlines live on tasks: if a milestone is driving the blip, dragging moves THAT
+            // task's `(due …)`. A task-less blip (an errand) still sets its own project deadline.
+            const driver = drivingTask(proj.tasks, now)
+            if (sched && driver) {
+              const t = proj.tasks[driver.index]
+              if (t) taskOp(drag.id, { action: 'edit', ref: driver.index, text: setTaskDue(t.text, sched.deadline) })
+              setFields(drag.id, { radar_angle: angle })
+            } else {
+              const patch: BlipFieldPatch = { radar_angle: angle }
+              if (sched) {
+                patch.deadline = sched.deadline
+                if (sched.horizon) patch.horizon = sched.horizon
+              }
+              setFields(drag.id, patch)
             }
-            setFields(drag.id, patch)
           }}
           onContextMenu={(e) => {
             e.preventDefault()

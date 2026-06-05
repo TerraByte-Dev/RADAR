@@ -2,18 +2,23 @@ import * as chrono from 'chrono-node'
 import { daysFromToday } from './date'
 
 /**
- * Optional per-task due dates — the "free-form" layer. A task line may carry a
+ * Per-task due dates — where deadlines actually live. A task line may carry a
  * trailing `(due …)` marker whose phrase is parsed by chrono ("(due friday)",
  * "(due 2026-07-01)", "(due next tue)"). This is the same marker the Inbox
  * capture flow emits, so it round-trips through the engine untouched.
  *
- * A project keeps ringing the radar by *its own* deadline; per-task dues just
- * tint the fleet's ship-markers by urgency and surface overdue tasks in the
- * NOW expansion. So "due someday AND tomorrow" resolves naturally: the project
- * sits at its horizon, with a bright/red ship for the urgent task inside it.
+ * **Deadlines belong to tasks (milestones), not projects.** A project's distance
+ * on the radar is driven by the soonest of its incomplete tasks' `(due …)` dates
+ * (see `effective/datedDeadlineDays` in `projectRadar`); an explicit project-level
+ * `deadline` is just the task-less "this whole thing is due X" / errand case. The
+ * per-task dues also tint the fleet's ship-markers by urgency and surface overdue
+ * tasks in the NOW expansion.
  */
 
 const DUE_RE = /\(due\s+([^)]+)\)\s*$/i
+
+/** Minimal shape of a task line for due aggregation (matches `BlipTask`). */
+type DuedTask = { text: string; done: boolean }
 
 /** The task text with any trailing `(due …)` marker stripped, for clean display. */
 export function taskText(text: string): string {
@@ -45,4 +50,43 @@ export function urgencyForDue(iso: string | null, ref: Date = new Date()): Urgen
 export function taskUrgency(text: string, ref: Date = new Date()): Urgency | null {
   const due = taskDueDate(text, ref)
   return due ? urgencyForDue(due, ref) : null
+}
+
+/**
+ * The soonest `(due …)` among a project's **incomplete** tasks — its next milestone,
+ * the date that drives the whole blip's radar distance. Returns a local ISO
+ * `YYYY-MM-DD`, or null when no open task is dated. (ISO dates compare lexically.)
+ */
+export function nearestTaskDue(tasks: readonly DuedTask[], ref: Date = new Date()): string | null {
+  let best: string | null = null
+  for (const t of tasks) {
+    if (t.done) continue
+    const due = taskDueDate(t.text, ref)
+    if (due && (best === null || due < best)) best = due
+  }
+  return best
+}
+
+/**
+ * The **driving task** — the incomplete task whose `(due …)` is soonest (the one
+ * positioning the blip). Returns its index + due, or null when no open task is dated.
+ * Used so dragging a fleet reschedules the milestone that's actually placing it.
+ */
+export function drivingTask(
+  tasks: readonly DuedTask[],
+  ref: Date = new Date()
+): { index: number; due: string } | null {
+  let best: { index: number; due: string } | null = null
+  tasks.forEach((t, index) => {
+    if (t.done) return
+    const due = taskDueDate(t.text, ref)
+    if (due && (best === null || due < best.due)) best = { index, due }
+  })
+  return best
+}
+
+/** Rewrite a task line's trailing `(due …)` marker — set a new ISO date, or clear it with null. */
+export function setTaskDue(text: string, iso: string | null): string {
+  const base = taskText(text)
+  return iso ? `${base} (due ${iso})` : base
 }

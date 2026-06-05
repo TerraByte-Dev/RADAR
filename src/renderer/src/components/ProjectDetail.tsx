@@ -4,7 +4,7 @@ import type { BlipStatus, Horizon, ProjectRecord } from '@shared/radar'
 import { BLIP_STATUSES, HORIZONS } from '@shared/radar'
 import { parseSessionLog } from '../lib/selectors'
 import { categoryColor, projectRelativeDeadline } from '../lib/projectRadar'
-import { taskDueDate, taskText, urgencyForDue } from '../lib/taskDue'
+import { setTaskDue, taskDueDate, taskText, urgencyForDue } from '../lib/taskDue'
 import { useStore } from '../store/useStore'
 
 const PRIORITIES = [1, 2, 3, 4, 5]
@@ -141,13 +141,18 @@ export function ProjectDetail({
             </div>
 
             <div className="col-span-2">
-              <Label>Deadline (overrides horizon)</Label>
+              <Label>Hard deadline · optional</Label>
               <input
                 type="date"
                 value={p.deadline?.slice(0, 10) ?? ''}
                 onChange={(e) => setFields(p.blipPath, { deadline: e.target.value || null })}
                 className="w-full border border-rule bg-lcd px-2 py-1 font-mono text-[12px] text-ink outline-none focus:border-phosphor"
               />
+              <div className="mt-1 font-mono text-[9px] leading-snug text-faint">
+                Usually unset — the radar places this blip by its soonest task{' '}
+                <span className="text-muted">(due …)</span>. Set a hard date only when the whole
+                project is due then.
+              </div>
             </div>
 
             <div>
@@ -238,15 +243,24 @@ export function ProjectDetail({
                     <span className={`flex-1 font-mono text-[12px] ${t.done ? 'text-faint line-through' : 'text-ink'}`}>
                       {taskText(t.text)}
                     </span>
-                    {due && (
-                      <span
-                        title={due}
-                        className={`shrink-0 font-mono text-[9px] uppercase tracking-[0.06em] ${
-                          urg === 'overdue' ? 'text-p1' : urg === 'soon' ? 'text-term-amber' : 'text-faint'
+                    {!t.done && (
+                      <input
+                        type="date"
+                        value={due ?? ''}
+                        title={due ? `due ${due}` : 'set a due date'}
+                        onChange={(e) =>
+                          taskOp(p.blipPath, { action: 'edit', ref: i, text: setTaskDue(t.text, e.target.value || null) })
+                        }
+                        className={`w-[6.7rem] shrink-0 border border-rule bg-lcd px-1 py-0.5 font-mono text-[10px] outline-none focus:border-phosphor ${
+                          urg === 'overdue'
+                            ? 'text-p1'
+                            : urg === 'soon'
+                              ? 'text-term-amber'
+                              : due
+                                ? 'text-ink'
+                                : 'text-faint'
                         }`}
-                      >
-                        {due.slice(5)}
-                      </span>
+                      />
                     )}
                     <button
                       onClick={() => taskOp(p.blipPath, { action: 'rm', ref: i })}

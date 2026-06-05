@@ -1,5 +1,7 @@
 import type { ProjectRecord } from '@shared/radar'
-import { dayKey, daysFromToday, formatDayHeading, parseDateLocal } from './date'
+import { dayKey, formatDayHeading, parseDateLocal } from './date'
+import { datedDeadlineDays } from './projectRadar'
+import { taskDueDate, taskText } from './taskDue'
 import type { View } from '../store/useStore'
 
 const DAY_MS = 86_400_000
@@ -20,9 +22,9 @@ export function isNeglected(p: ProjectRecord, ref: Date = new Date(), days = 30)
   return (ref.getTime() - new Date(last).getTime()) / DAY_MS > days
 }
 
-/** Days until a project's deadline (real deadlines only; null when none). */
+/** Days until a project's *effective* deadline — nearest task due or hard deadline; null when neither. */
 function deadlineDays(p: ProjectRecord, ref: Date): number | null {
-  return p.deadline ? daysFromToday(p.deadline, ref) : null
+  return datedDeadlineDays(p, ref)
 }
 
 /** Sort: real deadlines first (soonest), then horizon, then name. */
@@ -66,23 +68,50 @@ export function projectsForView(
   }
 }
 
-/** Index every deadlined project by its local day key (for the calendar grid). */
-export function projectsByDeadlineKey(projects: ProjectRecord[]): Map<string, ProjectRecord[]> {
-  const map = new Map<string, ProjectRecord[]>()
-  for (const p of projects) {
-    if (!p.deadline || p.status === 'archived') continue
-    const key = dayKey(deadlineDate(p.deadline))
+/**
+ * A dated thing on the calendar — a **task milestone** (a `(due …)`) or a project's own
+ * **hard deadline**. Deadlines live on tasks, so most calendar entries are milestones;
+ * a task-less project with an explicit `deadline` contributes a `deadline` entry.
+ */
+export interface CalendarItem {
+  blipPath: string
+  projectName: string
+  category: string
+  priority: number
+  kind: 'task' | 'deadline'
+  /** The task text (milestone) or the project name (hard deadline). */
+  label: string
+  /** Index of the source task in `project.tasks` (only for `kind: 'task'`). */
+  taskIndex?: number
+}
+
+/** Index every milestone + hard deadline by its local day key (for the calendar grid). */
+export function calendarItemsByDay(projects: ProjectRecord[]): Map<string, CalendarItem[]> {
+  const map = new Map<string, CalendarItem[]>()
+  const push = (key: string, item: CalendarItem): void => {
     const bucket = map.get(key)
-    if (bucket) bucket.push(p)
-    else map.set(key, [p])
+    if (bucket) bucket.push(item)
+    else map.set(key, [item])
+  }
+  for (const p of projects) {
+    if (p.status === 'archived' || p.ghost) continue
+    const meta = { blipPath: p.blipPath, projectName: p.name ?? 'Project', category: p.category, priority: p.priority }
+    if (p.deadline) {
+      push(dayKey(deadlineDate(p.deadline)), { ...meta, kind: 'deadline', label: p.name ?? 'Project' })
+    }
+    p.tasks.forEach((t, taskIndex) => {
+      if (t.done) return
+      const due = taskDueDate(t.text)
+      if (due) push(dayKey(deadlineDate(due)), { ...meta, kind: 'task', label: taskText(t.text), taskIndex })
+    })
   }
   for (const bucket of map.values()) bucket.sort((a, b) => a.priority - b.priority)
   return map
 }
 
-/** Projects whose deadline falls on a specific calendar day. */
-export function projectsOnDeadlineDay(projects: ProjectRecord[], dayISO: string): ProjectRecord[] {
-  return projectsByDeadlineKey(projects).get(dayISO) ?? []
+/** Milestones + hard deadlines falling on a specific calendar day. */
+export function calendarItemsOnDay(projects: ProjectRecord[], dayISO: string): CalendarItem[] {
+  return calendarItemsByDay(projects).get(dayISO) ?? []
 }
 
 export function viewTitle(view: View): string {

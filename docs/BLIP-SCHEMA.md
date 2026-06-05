@@ -52,8 +52,8 @@ Whiteboard sketch lives in the bedroom.
 | Field | Type | Allowed / format | Owner | Drives |
 |---|---|---|---|---|
 | `name` | string | any | user (default = folder name) | blip label |
-| `horizon` | string | `today` \| `week` \| `someday` | **RADAR** | radar **distance** *fallback* when no `deadline` |
-| `deadline` | date | ISO `YYYY-MM-DD` or datetime | **RADAR** | radar **distance** (exact, continuous time-to-due) — **overrides** `horizon` |
+| `horizon` | string | `today` \| `week` \| `someday` | **RADAR** | radar **distance** *fallback* when the project has no dated driver (no task `(due …)` and no `deadline`) |
+| `deadline` | date | ISO `YYYY-MM-DD` or datetime | **RADAR** | a project-level **hard deadline** — the task-less "this whole thing is due X" / errand case. Distance uses the *soonest* of this and the nearest task `(due …)`. Usually unset (deadlines live on tasks). |
 | `priority` | integer | `1`–`5` (1 = top) | **RADAR** | radar **blip size** |
 | `category` | string | free text (e.g. `Client`, `Product`, `Admin`) | **RADAR** | radar **blip color** |
 | `status` | string | `active` \| `paused` \| `blocked` \| `shipped` \| `archived` | **RADAR** | radar styling / filtering |
@@ -74,7 +74,7 @@ Whiteboard sketch lives in the bedroom.
 
 The body is parsed by top-level (`#`) headings. Three heading names are meaningful (case-insensitive); **every other section, and any text before the first heading, is preserved untouched.**
 
-- **`# Tasks`** — RADAR-owned GFM checklist (`- [ ]` / `- [x]`). Managed by the app and `radar-blip task add|done|undone|toggle|rm|edit`. Open tasks become the **ship-markers** inside a project's fleet ring. A task may carry an optional trailing **`(due …)`** marker (e.g. `- [ ] Pay invoice (due 2026-07-01)` or `(due friday)`) — chrono-parsed by the app to tint its ship by urgency and surface it in the NOW overdue panel; the engine keeps the text verbatim. A leading HTML comment is preserved.
+- **`# Tasks`** — RADAR-owned GFM checklist (`- [ ]` / `- [x]`). Managed by the app and `radar-blip task add|done|undone|toggle|rm|edit`. Open tasks become the **ship-markers** inside a project's fleet ring. A task may carry an optional trailing **`(due …)`** marker (e.g. `- [ ] Pay invoice (due 2026-07-01)` or `(due friday)`) — chrono-parsed by the app. **These task dues are where deadlines live:** the *soonest* incomplete task `(due …)` drives the whole blip's radar distance (its next milestone), tints that task's ship by urgency, and surfaces it in the NOW overdue panel. The engine keeps the text verbatim. A leading HTML comment is preserved.
 - **`# Session log`** — append-only. `radar-blip handoff` adds a dated `## YYYY-MM-DD — <author>` entry and updates `last_session` + `next_action`. Prior entries are never edited or reordered.
 - **`# Notes`** — human-only. The engine and skills never rewrite this section or derive behavior from it.
 
@@ -94,7 +94,7 @@ The engine's serialize step is a **faithful round-trip**: parsing a file and ser
 
 ## Radar mapping (how fields become a blip)
 
-- `deadline` → **distance from center** on a continuous, log-compressed time-to-due scale (dead-center = now; far-future compresses toward the rim). When absent, `horizon` picks a representative band (`today` inner · `week` middle · `someday` rim).
+- **distance from center** = the project's *effective* deadline on a continuous, log-compressed time-to-due scale (dead-center = now; far-future compresses toward the rim). The effective deadline is the **soonest of** the nearest incomplete task `(due …)` (its next milestone) and the optional project-level `deadline`. When the project has no dated driver at all, `horizon` picks a representative band (`today` inner · `week` middle · `someday` rim). Dragging a fleet reschedules its driving milestone; dragging a task-less blip sets its project `deadline`.
 - `priority` → blip **diameter** (P1 largest).
 - `category` → blip **color** (curated palette; stable hash for new categories).
 - `status` → **styling**: `blocked` pulses, `shipped` dims, `archived` hidden from the active scope, parse-error = "signal lost".

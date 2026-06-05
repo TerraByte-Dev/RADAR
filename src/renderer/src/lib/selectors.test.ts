@@ -4,10 +4,10 @@ import { dayKey } from './date'
 import {
   activityCounts,
   buildLogbook,
+  calendarItemsByDay,
   deadlineDate,
   isNeglected,
   parseSessionLog,
-  projectsByDeadlineKey,
   projectsForView
 } from './selectors'
 
@@ -57,17 +57,40 @@ describe('projectsForView', () => {
     expect(ids).not.toContain('e')
   })
 
+  it('"today" includes a project pulled in by a soon TASK due (no project deadline)', () => {
+    // someday horizon, no deadline, but an incomplete task due in 3 days → effective deadline is soon.
+    const taskDriven = p({ blipPath: 'f', name: 'F', tasks: [{ text: 'ship (due 2026-06-05)', done: false }] })
+    const ids = projectsForView([...projects, taskDriven], { kind: 'today' }, REF).map((x) => x.blipPath)
+    expect(ids).toContain('f')
+  })
+
   it('"all" lists every non-archived project sorted by name', () => {
     const names = projectsForView(projects, { kind: 'all' }, REF).map((x) => x.name)
     expect(names).toEqual(['A', 'B', 'C', 'D'])
   })
 })
 
-describe('projectsByDeadlineKey', () => {
-  it('buckets deadlined projects by local calendar day', () => {
-    const map = projectsByDeadlineKey([p({ blipPath: 'a', deadline: '2026-07-01' })])
+describe('calendarItemsByDay', () => {
+  it('buckets task milestones and hard deadlines by local calendar day', () => {
+    const items = calendarItemsByDay([
+      p({ blipPath: 'a', name: 'A', deadline: '2026-07-01' }),
+      p({ blipPath: 'b', name: 'B', tasks: [{ text: 'ship (due 2026-07-01)', done: false }] })
+    ])
     const key = dayKey(deadlineDate('2026-07-01'))
-    expect(map.get(key)?.[0]?.blipPath).toBe('a')
+    const onDay = items.get(key) ?? []
+    expect(onDay).toHaveLength(2)
+    expect(onDay.find((i) => i.kind === 'deadline')?.blipPath).toBe('a')
+    const task = onDay.find((i) => i.kind === 'task')
+    expect(task).toMatchObject({ blipPath: 'b', label: 'ship', taskIndex: 0 })
+  })
+
+  it('ignores done tasks, archived projects, and ghosts', () => {
+    const items = calendarItemsByDay([
+      p({ blipPath: 'a', tasks: [{ text: 'done one (due 2026-07-01)', done: true }] }),
+      p({ blipPath: 'b', status: 'archived', deadline: '2026-07-01' }),
+      p({ blipPath: 'c', ghost: true, tasks: [{ text: 'x (due 2026-07-01)', done: false }] })
+    ])
+    expect(items.size).toBe(0)
   })
 })
 
