@@ -1,14 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import {
   AlarmClock,
   CalendarRange,
   FolderPlus,
   Inbox,
   Plus,
-  Monitor,
   Radar,
   ScrollText,
-  Settings as SettingsIcon,
   Sun
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -16,7 +14,6 @@ import logo from '../assets/logo.png'
 import { isNeglected, projectsForView } from '../lib/selectors'
 import { categoryColor } from '../lib/projectRadar'
 import { useStore, type View } from '../store/useStore'
-import { Settings } from './Settings'
 
 function NavRow({
   icon: Icon,
@@ -71,9 +68,7 @@ function GroupLabel({ children }: { children: React.ReactNode }): JSX.Element {
 export function Sidebar(): JSX.Element {
   const projects = useStore((s) => s.projects)
   const view = useStore((s) => s.view)
-  const crt = useStore((s) => s.crtEffects)
-  const { setView, setSelectedBlip, toggleCrt, adoptFolder, addWorkspaceRoot } = useStore.getState()
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const { setView, setSelectedBlip, adoptFolder, addWorkspaceRoot } = useStore.getState()
 
   const live = useMemo(() => projects.filter((p) => p.status !== 'archived' && !p.ghost), [projects])
   const counts = useMemo(
@@ -161,32 +156,6 @@ export function Sidebar(): JSX.Element {
           </button>
         ))}
       </div>
-
-      <div className="no-drag flex items-center justify-between border-t border-rule px-3 py-2">
-        <button
-          onClick={toggleCrt}
-          title="Toggle CRT effects"
-          className={`flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors ${
-            crt ? 'text-phosphor' : 'text-faint hover:text-ink'
-          }`}
-        >
-          <Monitor size={12} />
-          CRT {crt ? 'ON' : 'OFF'}
-        </button>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setSettingsOpen(true)}
-            title="Workspace settings"
-            aria-label="Workspace settings"
-            className="text-faint transition-colors hover:text-phosphor"
-          >
-            <SettingsIcon size={12} />
-          </button>
-          <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-faint/70">v0.1.0</span>
-        </div>
-      </div>
-
-      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </aside>
   )
 }

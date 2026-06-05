@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Minus, Square, X } from 'lucide-react'
+import { Minus, Monitor, Settings as SettingsIcon, Square, X } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import { Settings } from './Settings'
 
 function formatClock(d: Date): string {
   const p = (n: number): string => String(n).padStart(2, '0')
@@ -9,10 +10,13 @@ function formatClock(d: Date): string {
   )}:${p(d.getSeconds())}`
 }
 
-/** Frameless-window title bar — brand logotype, live clock, and window controls. */
+/** Frameless-window title bar — brand logotype, live clock, CRT + settings, and window controls. */
 export function TitleBar(): JSX.Element {
   const projects = useStore((s) => s.projects)
+  const crt = useStore((s) => s.crtEffects)
+  const { toggleCrt } = useStore.getState()
   const [clock, setClock] = useState(() => formatClock(new Date()))
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   useEffect(() => {
     const id = window.setInterval(() => setClock(formatClock(new Date())), 1000)
@@ -43,6 +47,31 @@ export function TitleBar(): JSX.Element {
         <span className="hidden font-mono text-[10px] uppercase tracking-[0.12em] text-term-amber sm:inline">
           ● {open} PROJECTS
         </span>
+        <span className="hidden font-mono text-[9px] uppercase tracking-[0.12em] text-faint/70 sm:inline">
+          v0.1.0
+        </span>
+
+        {/* CRT + settings — signature top-bar cluster (was the sidebar footer) */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleCrt}
+            title={crt ? 'CRT effects on — click to disable' : 'CRT effects off — click to enable'}
+            aria-label="Toggle CRT effects"
+            aria-pressed={crt}
+            className={`transition-colors ${crt ? 'text-phosphor' : 'text-faint hover:text-phosphor'}`}
+          >
+            <Monitor size={13} />
+          </button>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            title="Workspace settings"
+            aria-label="Workspace settings"
+            className="text-faint transition-colors hover:text-phosphor"
+          >
+            <SettingsIcon size={13} />
+          </button>
+        </div>
+
         <div className="flex items-center gap-[3px]">
           <button
             onClick={() => window.api.minimizeWindow()}
@@ -70,6 +99,8 @@ export function TitleBar(): JSX.Element {
           </button>
         </div>
       </div>
+
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   )
 }
