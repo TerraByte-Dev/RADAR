@@ -8,6 +8,7 @@ import type {
   ProjectRecord
 } from '../../shared/radar'
 import { noteSelfWrite } from './selfwrite'
+import { readGitSeed, type GitSeed } from './gitseed'
 
 /**
  * BLIP.md scan + write layer (electron-free, so it is unit-testable). Every write
@@ -198,13 +199,32 @@ export async function deleteProject(blipPath: string): Promise<void> {
   }
 }
 
-/** Create a BLIP.md in `dir` (adopt a folder / ghost). */
+/**
+ * Create a BLIP.md in `dir` (adopt a folder / ghost). When the folder is a git repo, seed the
+ * blip with **honest signal from its history** — true recency (`last_session` = the last commit
+ * date, so neglected-detection works the moment it's adopted) and a first `# Session log` entry
+ * noting the latest commit — so a fresh blip is legible instead of a blank "someday" dot. The
+ * git read is injectable for tests and never throws (a non-repo just yields the plain blip).
+ */
 export async function initProject(
   dir: string,
-  opts: InitProjectOptions
+  opts: InitProjectOptions,
+  seed: (dir: string) => Promise<GitSeed | null> = readGitSeed
 ): Promise<ProjectRecord> {
   const blipPath = join(dir, 'BLIP.md')
   const blip = createBlip({ name: opts.name ?? basename(dir), ...opts })
+
+  const git = await seed(dir)
+  if (git) {
+    blip.appendSession({
+      date: git.lastCommitDate,
+      author: 'RADAR',
+      lines: ['Adopted into RADAR — seeded from git history.', `Last commit (${git.shortSha}): ${git.subject}`]
+    })
+    // appendSession stamps last_session = now; override it with the repo's true last-activity time.
+    blip.setField('last_session', git.lastCommitISO)
+  }
+
   noteSelfWrite(blipPath)
   await writeBlipAtomic(blipPath, blip)
   return readProject(blipPath, dir)

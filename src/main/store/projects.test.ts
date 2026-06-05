@@ -120,10 +120,44 @@ describe('write ops (engine round-trip through the main layer)', () => {
   it('initProject creates a BLIP.md named from the folder', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'radar-init-'))
     try {
-      const rec = await initProject(dir, { category: 'Client', deadline: '2026-09-01' })
+      // No git history (inject null) → behaves like a plain create.
+      const rec = await initProject(dir, { category: 'Client', deadline: '2026-09-01' }, async () => null)
       expect(rec.name).toBe(basename(dir))
       expect(rec.category).toBe('Client')
       expect(rec.deadline).toBe('2026-09-01')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('initProject seeds true recency + a first session-log entry from git history', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'radar-init-git-'))
+    try {
+      const rec = await initProject(dir, {}, async () => ({
+        lastCommitISO: '2026-05-30T10:00:00-06:00',
+        lastCommitDate: '2026-05-30',
+        shortSha: 'abc1234',
+        author: 'Tate',
+        subject: 'feat: do a real thing'
+      }))
+      // last_session reflects the commit time (not "now") so neglected-detection is honest.
+      expect(rec.last_session).toBe('2026-05-30T10:00:00-06:00')
+      // The timeline is non-empty on first open, dated to the commit, citing the real commit.
+      expect(rec.sessionLog).toContain('2026-05-30 — RADAR')
+      expect(rec.sessionLog).toContain('Adopted into RADAR')
+      expect(rec.sessionLog).toContain('abc1234')
+      expect(rec.sessionLog).toContain('feat: do a real thing')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('initProject without git history leaves the blip un-seeded (no fake recency / log)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'radar-init-nogit-'))
+    try {
+      const rec = await initProject(dir, {}, async () => null)
+      expect(rec.last_session).toBeUndefined()
+      expect(rec.sessionLog ?? '').not.toContain('Adopted into RADAR')
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

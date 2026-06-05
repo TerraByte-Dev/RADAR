@@ -1,6 +1,6 @@
 ---
 name: blip
-description: Capture or update the current project's BLIP.md — the per-project state file behind the RADAR project radar. Use when the user runs /blip, or asks to log session progress / write a handoff, set the project's next action / horizon / priority / category / status, or add and check off the project's tasks. Shells out to the shared `radar-blip` CLI so the file stays byte-safe and round-trip-clean.
+description: Capture or update the current project's BLIP.md — the per-project state file behind the RADAR project radar. Use when the user runs /blip, or asks to log session progress / write a handoff, set the project's next action / horizon / priority / category / status, or add and check off the project's tasks. ALSO use proactively, without being asked, at the natural end of a working session in any repo that has a BLIP.md — log a handoff so the radar reflects what you just did. Shells out to the shared `radar-blip` CLI so the file stays byte-safe and round-trip-clean.
 ---
 
 # /blip
@@ -13,6 +13,16 @@ appending to the session log and never touching `# Notes` or unknown frontmatter
 **Golden rule: never hand-edit `BLIP.md`. Always go through `radar-blip`.** The app, the
 CLI, and this skill share one engine precisely so they can't disagree — editing the file
 by hand breaks that guarantee.
+
+## Run it proactively — this is the whole point
+RADAR is **AI-fed, never micromanaged**: a project's state should be a *byproduct* of the work,
+not a chore the user remembers to do. So **when you finish a meaningful chunk of work in a repo
+that has a `BLIP.md` (a tracked RADAR project), run `/blip handoff` on your own initiative before
+you wrap up — you don't need to be asked.** One handoff at the natural end of a working session is
+the target: don't nag mid-flow, and don't log trivial no-ops. Honor the boundaries:
+- **No `BLIP.md`? Leave the repo alone.** Don't auto-`init` — adoption is the user's call.
+- **Only ever write `BLIP.md`.** Never create or edit other files (e.g. `CLAUDE.md`, `AGENTS.md`)
+  to record state; the single `BLIP.md` is the whole contract.
 
 ## Resolve the CLI (do this first)
 Use the first form that works:

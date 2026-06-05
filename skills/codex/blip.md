@@ -1,5 +1,5 @@
 ---
-description: Capture or update the current project's BLIP.md via the shared radar-blip CLI — the per-project state file behind the RADAR project radar. Logs a session/handoff, sets next action / horizon / priority / category / status, or manages the project's tasks.
+description: Capture or update the current project's BLIP.md via the shared radar-blip CLI — the per-project state file behind the RADAR project radar. Logs a session/handoff, sets next action / horizon / priority / category / status, or manages the project's tasks. Also run it proactively at the natural end of a working session in any repo that has a BLIP.md.
 argument-hint: "[handoff | task \"text\" | init | set --status blocked --next \"…\" | show]"
 ---
 
@@ -10,6 +10,11 @@ on the session log, and never touching `# Notes` or unknown frontmatter keys.
 
 **Never hand-edit `BLIP.md`. Always go through `radar-blip`** — the app, the CLI, and this
 prompt share one engine so they can't disagree.
+
+**Run it proactively.** RADAR is *AI-fed, never micromanaged*: at the natural end of a working
+session in a repo that has a `BLIP.md`, run `handoff` on your own initiative — don't wait to be
+asked. One handoff per session; no nagging, no trivial no-ops. If there's no `BLIP.md`, leave the
+repo alone (don't auto-`init`). Only ever write `BLIP.md` — never other files.
 
 ## Resolve the CLI (first form that works)
 1. `radar-blip <args>` — when it's on `PATH` (via `npm i -g radar-blip` or `radar-blip skills install`).
