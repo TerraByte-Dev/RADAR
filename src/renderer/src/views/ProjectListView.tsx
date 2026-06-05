@@ -91,9 +91,13 @@ function InboxPanel({ inbox }: { inbox: ProjectRecord | undefined }): JSX.Elemen
 export function ProjectListView(): JSX.Element {
   const projects = useStore((s) => s.projects)
   const view = useStore((s) => s.view)
+  const neglectedDays = useStore((s) => s.neglectedDays)
   const { setView, setSelectedBlip } = useStore.getState()
 
-  const list = useMemo(() => projectsForView(projects, view), [projects, view])
+  const list = useMemo(
+    () => projectsForView(projects, view, new Date(), neglectedDays),
+    [projects, view, neglectedDays]
+  )
   const inbox = useMemo(() => projects.find((p) => p.name === 'Inbox'), [projects])
 
   function open(blipPath: string): void {

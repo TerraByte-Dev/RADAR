@@ -32,6 +32,11 @@ describe('isNeglected', () => {
     expect(isNeglected(p({ last_session: '2026-04-01T00:00:00Z' }), REF)).toBe(true) // > 30d
     expect(isNeglected(p({ last_session: '2026-06-01T00:00:00Z' }), REF)).toBe(false) // 2d
   })
+  it('honors a custom threshold (the Radar behavior setting)', () => {
+    const wk = p({ last_session: '2026-05-26T00:00:00Z' }) // ~10d before REF (2026-06-05)
+    expect(isNeglected(wk, REF, 7)).toBe(true) // neglected at a 7d threshold
+    expect(isNeglected(wk, REF, 30)).toBe(false) // not yet at 30d
+  })
   it('exempts shipped / archived / ghost projects', () => {
     expect(isNeglected(p({ last_session: '2026-01-01T00:00:00Z', status: 'shipped' }), REF)).toBe(false)
     expect(isNeglected(p({ last_session: '2026-01-01T00:00:00Z', status: 'archived' }), REF)).toBe(false)

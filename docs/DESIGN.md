@@ -45,6 +45,48 @@ project's color never reads as state. A new project auto-picks the **least-used*
 (`nextProjectColor`), so projects stay visually distinct until the whole palette is in play; the
 recolor picker (`ProjectContextMenu`, a 4×4 grid) renders the same set.
 
+## Themes
+
+The palette above is the **default `terrabyte` theme**; the whole skin recolors at runtime. The
+mechanism is CSS-variable tokens + a small theme engine (`lib/theme.ts`).
+
+**Token model (the one architectural rule).** Every Tailwind color maps onto a CSS variable holding
+**space-separated RGB channels** (`rgb(var(--phosphor-rgb) / <alpha-value>)`), and the hand-written
+component classes use **full-color tokens derived from those channels** (`--phosphor:
+rgb(var(--phosphor-rgb))`). Both live in `styles/index.css`. Because the derived tokens reference the
+channels lazily, a theme only has to swap the *base channels* and every utility, class, shadow, and
+the canvas recolor for free:
+
+- **Base channels** (`:root`): `--phosphor-rgb`, `--phosphor-bright-rgb`, `--phosphor-dim-rgb`,
+  `--ink-rgb`, `--bg-rgb`, `--panel-rgb`, `--panel-lite-rgb`, `--hover-rgb`, `--lcd-rgb`,
+  `--term-{cyan,amber,magenta,red}-rgb`.
+- **Derived tokens**: `--phosphor`, `--ink`, `--bg`, `--panel`, `--rule` (= `phosphor / .18`),
+  `--ink-dim`, `--phosphor-faint`, … — never redefined per theme; they re-resolve against the new
+  channels on the same `<html>`.
+
+**Registry (`lib/theme.ts`).** `THEMES: Theme[]` — `{ id, name, blurb, family, swatch }`. Two
+families: **`crt`** (recolored TERRABYTE.SYS — scanlines + grid + glow) and **`universal`** (clean
+Dark/Light, no CRT, flat neutral rules). `applyTheme(id)` sets `data-theme` on `<html>`, reconciles
+the `crt-off` class, persists `radar.theme`, and dispatches `radar-theme-change`. `resolveCrtOff`
+(pure, unit-tested) decides the overlay: universal → always off; crt → honor the manual
+`radar.crt-off` pref. `themeBoot()` (called in `main.tsx` before render) applies the stored theme +
+CRT class **pre-paint**, so there's no flash. `useThemeState()` keeps the title bar + Appearance tab
+in sync via the events.
+
+**Adding a theme** = one `THEMES` entry + one `html[data-theme="…"]` block in `index.css` overriding
+the base channels (and, for non-black backgrounds, `--bg-rgb`/`--panel-rgb`/…). No component code
+changes — that's the invariant.
+
+**CRT toggle.** One source of truth: the `html.crt-off` class. CSS hides `.crt-stack` + `.term-grid-bg`
+under it; universal themes force it on; the title-bar monitor button + Appearance toggle both route
+through `setCrtOff` (persisted to `radar.crt-off`). The store's `crtEffects` is a synced mirror.
+
+**Canvas.** The `<canvas>` radar can't read Tailwind classes, so `lib/radarColors.ts` reads the
+accent/ink channels off the resolved CSS vars, caches them, and recomputes only on `radar-theme-change`
+(never per rAF frame). Only the **scope chrome** (accent sweep/rings/center/selection) is themed;
+**semantic data colors** (overdue `#FF3030`, soon `#FFB000`, the time-ring scale, category hues) stay
+fixed constants — they encode meaning, not the skin.
+
 ## Type
 
 | Family | Token | Used for |

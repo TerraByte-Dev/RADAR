@@ -86,6 +86,7 @@ function drawShip(ctx: CanvasRenderingContext2D, x: number, y: number, s: number
 export function RadarView(): JSX.Element {
   const projects = useStore((s) => s.projects)
   const selectedBlip = useStore((s) => s.selectedBlip)
+  const neglectedDays = useStore((s) => s.neglectedDays)
   const { setSelectedBlip, setFields, taskOp, resetRadarLayout } = useStore.getState()
 
   const [hudId, setHudId] = useState<string | null>(null)
@@ -145,7 +146,7 @@ export function RadarView(): JSX.Element {
         }
       }
     }
-    const neglected = contacts.filter((p) => !p.ghost && isNeglected(p, ref))
+    const neglected = contacts.filter((p) => !p.ghost && isNeglected(p, ref, neglectedDays))
     const overdueTotal = overdueProjects.length + overdueTasks.length
     const total = overdueTotal + neglected.length
     const red = overdueTotal > 0
@@ -153,7 +154,7 @@ export function RadarView(): JSX.Element {
       red && neglected.length > 0 ? 'NEEDS ATTENTION' : red ? 'OVERDUE' : 'NEGLECTED'
     return { overdueProjects, overdueTasks, neglected, overdueTotal, total, red, label }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contacts, nowTick])
+  }, [contacts, nowTick, neglectedDays])
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef({
@@ -836,6 +837,7 @@ export function RadarView(): JSX.Element {
       {attnOpen && (
         <AttentionPanel
           attention={attention}
+          neglectedDays={neglectedDays}
           onClose={() => setAttnOpen(false)}
           onSelect={(bp) => {
             setSelectedBlip(bp)
@@ -850,10 +852,12 @@ export function RadarView(): JSX.Element {
 /** The NOW expansion — overdue projects + overdue tasks + neglected projects, one click from the center. */
 function AttentionPanel({
   attention,
+  neglectedDays,
   onClose,
   onSelect
 }: {
   attention: AttentionData
+  neglectedDays: number
   onClose: () => void
   onSelect: (blipPath: string) => void
 }): JSX.Element {
@@ -919,7 +923,7 @@ function AttentionPanel({
 
           {attention.neglected.length > 0 && (
             <div className="px-2 pb-1 pt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-term-amber/80">
-              Neglected (30d+)
+              Neglected ({neglectedDays}d+)
             </div>
           )}
           {attention.neglected.map((p) => (

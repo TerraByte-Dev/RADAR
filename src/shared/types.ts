@@ -131,8 +131,23 @@ export const IPC = {
   radarReveal: 'radar:reveal',
   radarOpenInEditor: 'radar:open-in-editor',
   /** Push channel: main → renderer when the watcher sees BLIP.md changes. */
-  radarProjectsChanged: 'radar:projects-changed'
+  radarProjectsChanged: 'radar:projects-changed',
+  // App + auto-update (window.api). electron-updater is packaged-only; dev reports devMode.
+  appGetVersion: 'app:get-version',
+  updateCheck: 'update:check',
+  updateDownload: 'update:download',
+  updateInstall: 'update:install',
+  /** Push channel: main → renderer with auto-update progress. */
+  updateEvent: 'update:event'
 } as const
+
+/** Auto-update lifecycle, pushed from main → renderer on the `update:event` channel. */
+export type UpdateEvent =
+  | { type: 'available'; version: string }
+  | { type: 'not-available' }
+  | { type: 'progress'; percent: number }
+  | { type: 'downloaded'; version: string }
+  | { type: 'error'; message: string }
 
 /** The typed surface exposed on `window.api` by the preload script. */
 export interface TodoApi {
@@ -152,4 +167,14 @@ export interface TodoApi {
   minimizeWindow(): void
   maximizeWindow(): void
   closeWindow(): void
+  /** Installed app version (e.g. "0.1.0"). */
+  getAppVersion(): Promise<string>
+  /** Trigger an update check. `devMode: true` in unpackaged builds (auto-update is packaged-only). */
+  checkForUpdates(): Promise<{ devMode: boolean }>
+  /** Start downloading an available update. */
+  downloadUpdate(): Promise<void>
+  /** Quit and install a downloaded update. */
+  installUpdate(): void
+  /** Subscribe to auto-update lifecycle events; returns an unsubscribe fn. */
+  onUpdateEvent(cb: (event: UpdateEvent) => void): () => void
 }

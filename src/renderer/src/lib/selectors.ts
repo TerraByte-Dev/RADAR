@@ -44,7 +44,8 @@ function compareUrgency(a: ProjectRecord, b: ProjectRecord, ref: Date): number {
 export function projectsForView(
   projects: ProjectRecord[],
   view: View,
-  ref: Date = new Date()
+  ref: Date = new Date(),
+  neglectedDays = 30
 ): ProjectRecord[] {
   const live = projects.filter((p) => p.status !== 'archived' && !p.ghost)
   switch (view.kind) {
@@ -58,7 +59,9 @@ export function projectsForView(
       return soon.sort((a, b) => compareUrgency(a, b, ref))
     }
     case 'neglected':
-      return live.filter((p) => isNeglected(p, ref)).sort((a, b) => compareUrgency(a, b, ref))
+      return live
+        .filter((p) => isNeglected(p, ref, neglectedDays))
+        .sort((a, b) => compareUrgency(a, b, ref))
     case 'inbox':
       return live.filter((p) => p.name === 'Inbox')
     case 'all':

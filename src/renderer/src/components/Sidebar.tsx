@@ -68,6 +68,7 @@ function GroupLabel({ children }: { children: React.ReactNode }): JSX.Element {
 export function Sidebar(): JSX.Element {
   const projects = useStore((s) => s.projects)
   const view = useStore((s) => s.view)
+  const neglectedDays = useStore((s) => s.neglectedDays)
   const { setView, setSelectedBlip, adoptFolder, addWorkspaceRoot } = useStore.getState()
 
   const live = useMemo(() => projects.filter((p) => p.status !== 'archived' && !p.ghost), [projects])
@@ -75,9 +76,9 @@ export function Sidebar(): JSX.Element {
     () => ({
       radar: live.length,
       today: projectsForView(projects, { kind: 'today' }).length,
-      neglected: projects.filter((p) => isNeglected(p)).length
+      neglected: projects.filter((p) => isNeglected(p, new Date(), neglectedDays)).length
     }),
-    [projects, live]
+    [projects, live, neglectedDays]
   )
 
   const ordered = useMemo(() => [...live].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '')), [live])

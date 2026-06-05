@@ -33,10 +33,12 @@ const SETTINGS_KEY = 'radar.settings'
 
 interface PersistedSettings {
   showCompleted: boolean
+  /** A project is "neglected" after this many days untouched (Radar behavior setting). */
+  neglectedDays: number
 }
 
 function loadSettings(): PersistedSettings {
-  const fallback: PersistedSettings = { showCompleted: true }
+  const fallback: PersistedSettings = { showCompleted: true, neglectedDays: 30 }
   try {
     if (typeof localStorage === 'undefined') return fallback
     const raw = localStorage.getItem(SETTINGS_KEY)
@@ -100,6 +102,7 @@ interface StoreState {
   // Preferences
   crtEffects: boolean
   showCompleted: boolean
+  neglectedDays: number
   bootDone: boolean
   onboarded: boolean
 
@@ -116,6 +119,7 @@ interface StoreState {
 
   toggleCrt(): void
   toggleShowCompleted(): void
+  setNeglectedDays(days: number): void
   finishBoot(): void
   finishOnboarding(): void
 
@@ -162,6 +166,7 @@ export const useStore = create<StoreState>((set, get) => ({
   // by the theme-change subscription in init(). The overlay itself is gated in CSS via `html.crt-off`.
   crtEffects: crtVisible(),
   showCompleted: loadSettings().showCompleted,
+  neglectedDays: loadSettings().neglectedDays,
   bootDone: bootAlreadySeen(),
   onboarded: onboardedAlready(),
 
@@ -202,8 +207,14 @@ export const useStore = create<StoreState>((set, get) => ({
   toggleShowCompleted: () =>
     set((s) => {
       const showCompleted = !s.showCompleted
-      saveSettings({ showCompleted })
+      saveSettings({ showCompleted, neglectedDays: s.neglectedDays })
       return { showCompleted }
+    }),
+  setNeglectedDays: (days) =>
+    set((s) => {
+      const neglectedDays = Math.max(1, Math.round(days))
+      saveSettings({ showCompleted: s.showCompleted, neglectedDays })
+      return { neglectedDays }
     }),
   finishBoot: () => {
     try {

@@ -6,7 +6,8 @@ import type {
   NewTaskInput,
   Project,
   Task,
-  TodoApi
+  TodoApi,
+  UpdateEvent
 } from '../shared/types'
 import type {
   BlipFieldPatch,
@@ -38,7 +39,16 @@ const api: TodoApi = {
   platform: process.platform,
   minimizeWindow: (): void => ipcRenderer.send(IPC.minimizeWindow),
   maximizeWindow: (): void => ipcRenderer.send(IPC.maximizeWindow),
-  closeWindow: (): void => ipcRenderer.send(IPC.closeWindow)
+  closeWindow: (): void => ipcRenderer.send(IPC.closeWindow),
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke(IPC.appGetVersion),
+  checkForUpdates: (): Promise<{ devMode: boolean }> => ipcRenderer.invoke(IPC.updateCheck),
+  downloadUpdate: (): Promise<void> => ipcRenderer.invoke(IPC.updateDownload),
+  installUpdate: (): void => ipcRenderer.send(IPC.updateInstall),
+  onUpdateEvent: (cb: (event: UpdateEvent) => void): (() => void) => {
+    const listener = (_e: unknown, event: UpdateEvent): void => cb(event)
+    ipcRenderer.on(IPC.updateEvent, listener)
+    return () => ipcRenderer.removeListener(IPC.updateEvent, listener)
+  }
 }
 
 const radar: RadarApi = {
