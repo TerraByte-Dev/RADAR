@@ -26,7 +26,10 @@ It evolved from the ToDoPlus task app; the repo is `TerraByte-Dev/ToDoPlus` and 
 
 - **Branch `feat/9-radar-pivot` → draft PR #10 (Closes #9). NOT merged to `main`.** All work since
   the pivot lives here. `main` is the pre-pivot ToDoPlus + the 3 merged polish PRs.
-- **Gates green:** `npm run typecheck` ✓ · `npm test` **112** (86 app + 26 engine) ✓ · `npm run build` ✓.
+- **Active sub-branch `feat/close-the-loop`** (off `feat/9-radar-pivot`) holds the latest work — see
+  the 2026-06-05 bullet. ⚠️ It currently has **three confirmed-good but UNCOMMITTED chunks**; commit
+  them first (exact commands in **`docs/SETTINGS-HANDOFF.md`**).
+- **Gates green:** `npm run typecheck` ✓ · `npm test` **128** (102 app + 26 engine) ✓ · `npm run build` ✓.
 - **Monorepo (npm workspaces):** `packages/blip-core` = the bulletproof `radar-blip` engine (parse/
   serialize `BLIP.md`, byte-faithful round-trip + atomic writes, CLI, `/blip` skills). App at repo root.
 - **Built so far (P0–P5 + several feedback rounds):** monorepo + vendored engine; `deadline`/
@@ -36,6 +39,18 @@ It evolved from the ToDoPlus task app; the repo is `TerraByte-Dev/ToDoPlus` and 
   removal** (archive/delete/dismiss + Workspace settings); the **BLIP.md boundary** scan; **fleets**;
   the **category compass**; the **interactive NOW center → attention panel** (overdue + neglected);
   **per-task `(due …)`** ship urgency; and a tested **`scheduleForDrop`** so drops land accurately.
+- **This session (2026-06-05) — on `feat/close-the-loop`, uncommitted:**
+  1. **Close the loop:** adopt now seeds honest signal from git (`gitseed.ts` → `initProject`: real
+     `last_session` recency + a first session-log entry from the latest commit); the `/blip` skills
+     (claude + codex) now self-feed (run `handoff` proactively at session end). `radar-blip` was
+     installed globally from the local build (npm package still unpublished — the onboarding's
+     `npm i -g radar-blip` line is still stale and worth fixing).
+  2. **Deadlines live on tasks:** radar distance = the *effective deadline* (soonest of the nearest
+     incomplete task `(due …)` and an optional project-level hard `deadline`); dragging a fleet
+     reschedules its driving milestone; inline per-task due editors in `ProjectDetail` + calendar
+     milestones. See memory `deadlines-live-on-tasks`.
+  3. **Chrome:** CRT toggle + ⚙ Settings moved into the **title bar** (TerraByte signature), removed
+     the sidebar footer.
 
 ## Run it
 
@@ -75,11 +90,16 @@ reappearing). **After any main/preload change, fully restart:** close the window
   only it shows). **Scan a workspace** (add root) = "find all projects under this parent" (surfaces
   child repos as **ghosts**). To remove something: right-click → Archive (hide) / Delete BLIP.md
   (remove file) / Dismiss (ghost); **⚙ Workspace** (sidebar footer) removes a scanned root.
-- **Per-task due:** a task line may carry `(due friday)` / `(due 2026-07-01)` (chrono-parsed,
-  `lib/taskDue.ts`) — tints its fleet ship by urgency and feeds the NOW attention panel. A project
-  still rings the radar by *its own* deadline.
+- **Deadlines live on tasks:** a task line may carry `(due friday)` / `(due 2026-07-01)` (chrono-parsed,
+  `lib/taskDue.ts`, editable inline in `ProjectDetail` + on the calendar). A project's radar distance
+  is its **effective deadline** — the *soonest of* its nearest incomplete task `(due …)` and an
+  optional project-level hard `deadline` (the task-less "whole thing is due X" / errand case),
+  falling back to the fuzzy horizon. Dragging a fleet reschedules its driving milestone; dragging a
+  task-less blip sets the project deadline. (`isOverdueProject` stays hard-deadline-only so late tasks
+  aren't double-counted in the NOW panel.)
 - **Radar math is pure + tested:** `lib/radar.ts` (generic time scale, fanning), `lib/projectRadar.ts`
-  (project→radar mapping, `scheduleForDrop`, `currentDayBucket`), `lib/taskDue.ts`. Touch these with tests.
+  (project→radar mapping, `datedDeadlineDays`/effective deadline, `scheduleForDrop`, `currentDayBucket`),
+  `lib/taskDue.ts` (`nearestTaskDue`/`drivingTask`/`setTaskDue`). Touch these with tests.
 - The canvas recomputes "now" each frame (live across midnight) and honors `prefers-reduced-motion`.
   Per-task parsing + overdue/neglected derivation run in memoized selectors **off** the rAF loop.
 - **Dormant legacy:** the old task store (`src/main/store/repository.ts`, `src/main/ipc/handlers.ts`,
@@ -87,10 +107,18 @@ reappearing). **After any main/preload change, fully restart:** close the window
   compiled** (kept because `lib/nlp.ts` imports `Priority`/`DueDate`). Removing it cleanly is an open
   cleanup thread — leave it until you do that intentionally.
 
-## Next focus — proper UX flow & UI feel
+## Next focus — robust Settings + theming  →  `docs/SETTINGS-HANDOFF.md`
 
-The mechanics and data model are solid and tested; the next pass is **how it feels to use.** Strong
-candidate threads (pick, reorder, or replace):
+**The immediate next task** (Tate's call, 2026-06-05): build a robust, tabbed **Settings** centered on
+a **theme system** (recolor the CRT skin + clean Dark/Light themes), matching the OpenEdu/TerraPlayer
+signature, plus useful settings. The full plan, the reference file paths, and the key wrinkle (RADAR's
+Tailwind tokens are hardcoded hexes → must be refactored to CSS variables; the canvas needs runtime
+recolor) are in **`docs/SETTINGS-HANDOFF.md`**. Start there.
+
+### Standing UX backlog (after / alongside settings)
+
+The mechanics and data model are solid and tested; this is the longer **how it feels to use** list.
+Strong candidate threads (pick, reorder, or replace):
 
 - **Visual cohesion across the new surfaces.** `ProjectDetail`, `Settings`, `Onboarding`,
   `AttentionPanel`, the right-click menus, and the list views were built feature-first — give them a
@@ -101,8 +129,9 @@ candidate threads (pick, reorder, or replace):
   detail aside. There's no dedicated "project page." Decide the canonical flow: radar-centric (select →
   aside) vs. a richer project view. Make selecting, opening, and going back feel obvious.
 - **The detail panel.** Functional but dense (field editors + checklist + session log + links). Rework
-  hierarchy; make the session-log timeline (the user's flagship love) shine; better task UX
-  (inline due editing, reorder, the `(due …)` affordance is currently just placeholder text).
+  hierarchy; make the session-log timeline (the user's flagship love) shine; further task UX (reorder,
+  natural-language due entry). _(Inline per-task `(due …)` editing now ships — a date input per open
+  task in `ProjectDetail` + drag-on-calendar.)_
 - **Capture & keyboard flow.** Quick-add (`q` / ⌘N) routes to Inbox or `#project`. Keyboard control is
   minimal right now (only ⌘K palette + quick-add) — the old Things-style `j/k/x/enter` nav was dropped
   in the pivot. Rebuild keyboard-first flow for projects if it fits the vision.
