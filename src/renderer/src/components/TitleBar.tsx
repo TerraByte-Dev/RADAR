@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Minus, Monitor, Settings as SettingsIcon, Square, X } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import { useThemeState } from '../lib/useTheme'
+import { themeSupportsCrt } from '../lib/theme'
 import { Settings } from './Settings'
 
 function formatClock(d: Date): string {
@@ -15,6 +17,8 @@ export function TitleBar(): JSX.Element {
   const projects = useStore((s) => s.projects)
   const crt = useStore((s) => s.crtEffects)
   const { toggleCrt } = useStore.getState()
+  const { themeId } = useThemeState()
+  const crtTheme = themeSupportsCrt(themeId)
   const [clock, setClock] = useState(() => formatClock(new Date()))
   const [settingsOpen, setSettingsOpen] = useState(false)
 
@@ -28,12 +32,12 @@ export function TitleBar(): JSX.Element {
 
   return (
     <div
-      className="drag-region relative z-[2] flex h-7 shrink-0 select-none items-center border-b border-rule bg-black px-3"
+      className="drag-region relative z-[2] flex h-7 shrink-0 select-none items-center border-b border-rule bg-bg px-3"
     >
       {/* Blinking diamond LED */}
       <span
         className="mr-2 inline-block h-[6px] w-[6px] shrink-0 bg-phosphor"
-        style={{ transform: 'rotate(45deg)', boxShadow: '0 0 6px #00FF88', animation: 'term-blink 2s steps(2) infinite' }}
+        style={{ transform: 'rotate(45deg)', boxShadow: '0 0 6px var(--phosphor)', animation: 'term-blink 2s steps(2) infinite' }}
       />
       <span className="phosphor-glow font-term text-[13px] tracking-[1.5px] text-phosphor">
         RADAR//SYS
@@ -55,10 +59,23 @@ export function TitleBar(): JSX.Element {
         <div className="flex items-center gap-2">
           <button
             onClick={toggleCrt}
-            title={crt ? 'CRT effects on — click to disable' : 'CRT effects off — click to enable'}
+            disabled={!crtTheme}
+            title={
+              !crtTheme
+                ? 'CRT off on clean themes — switch to a CRT theme in Settings'
+                : crt
+                  ? 'CRT effects on — click to disable'
+                  : 'CRT effects off — click to enable'
+            }
             aria-label="Toggle CRT effects"
             aria-pressed={crt}
-            className={`transition-colors ${crt ? 'text-phosphor' : 'text-faint hover:text-phosphor'}`}
+            className={`transition-colors ${
+              !crtTheme
+                ? 'cursor-default text-faint/40'
+                : crt
+                  ? 'text-phosphor'
+                  : 'text-faint hover:text-phosphor'
+            }`}
           >
             <Monitor size={13} />
           </button>

@@ -7,6 +7,15 @@ import type {
 } from '@shared/radar'
 import { parseQuickAdd } from '../lib/nlp'
 import { addMonths, currentMonth, dayKey, type YearMonth } from '../lib/date'
+import {
+  CRT_CHANGE_EVENT,
+  THEME_CHANGE_EVENT,
+  crtVisible,
+  getCrtOff,
+  getThemeId,
+  setCrtOff,
+  themeSupportsCrt
+} from '../lib/theme'
 
 export type View =
   | { kind: 'radar' }
@@ -18,15 +27,16 @@ export type View =
   | { kind: 'all' }
 
 /* ── Renderer-local UI preferences (persisted to localStorage) ── */
+// `showCompleted` lives here; CRT now lives in the theme module (`lib/theme.ts`, `radar.crt-off`) as the
+// single source of truth, reconciled into `crtEffects` below via the theme-change events.
 const SETTINGS_KEY = 'radar.settings'
 
 interface PersistedSettings {
-  crtEffects: boolean
   showCompleted: boolean
 }
 
 function loadSettings(): PersistedSettings {
-  const fallback: PersistedSettings = { crtEffects: true, showCompleted: true }
+  const fallback: PersistedSettings = { showCompleted: true }
   try {
     if (typeof localStorage === 'undefined') return fallback
     const raw = localStorage.getItem(SETTINGS_KEY)
@@ -148,12 +158,21 @@ export const useStore = create<StoreState>((set, get) => ({
   calendarMonth: currentMonth(),
   calendarSelectedDay: null,
 
-  crtEffects: loadSettings().crtEffects,
+  // `crtEffects` === "CRT overlay currently visible" — a mirror of the theme engine's truth, kept in sync
+  // by the theme-change subscription in init(). The overlay itself is gated in CSS via `html.crt-off`.
+  crtEffects: crtVisible(),
   showCompleted: loadSettings().showCompleted,
   bootDone: bootAlreadySeen(),
   onboarded: onboardedAlready(),
 
   async init() {
+    // Keep `crtEffects` in lockstep with the theme engine (Appearance tab / title bar / palette all route
+    // through it), so CrtOverlay's render gate + the toggle's pressed-state never disagree.
+    const syncCrt = (): void => set({ crtEffects: crtVisible() })
+    window.addEventListener(THEME_CHANGE_EVENT, syncCrt)
+    window.addEventListener(CRT_CHANGE_EVENT, syncCrt)
+    syncCrt()
+
     const [projects, config] = await Promise.all([window.radar.scan(), window.radar.getConfig()])
     set({ projects, config, loaded: true })
     if (!get().watching) {
@@ -173,16 +192,17 @@ export const useStore = create<StoreState>((set, get) => ({
     set({ calendarMonth: currentMonth(), calendarSelectedDay: dayKey(new Date()) }),
   setCalendarSelectedDay: (calendarSelectedDay) => set({ calendarSelectedDay }),
 
-  toggleCrt: () =>
-    set((s) => {
-      const crtEffects = !s.crtEffects
-      saveSettings({ crtEffects, showCompleted: s.showCompleted })
-      return { crtEffects }
-    }),
+  toggleCrt: () => {
+    // CRT is a per-theme-aware manual pref. Under a universal (clean) theme the overlay is forced off,
+    // so toggling is a no-op. `setCrtOff` dispatches `radar-crt-change` → the init() subscription updates
+    // `crtEffects`, so we don't set it here.
+    if (!themeSupportsCrt(getThemeId())) return
+    setCrtOff(!getCrtOff())
+  },
   toggleShowCompleted: () =>
     set((s) => {
       const showCompleted = !s.showCompleted
-      saveSettings({ crtEffects: s.crtEffects, showCompleted })
+      saveSettings({ showCompleted })
       return { showCompleted }
     }),
   finishBoot: () => {

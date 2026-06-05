@@ -44,7 +44,7 @@ export default function App(): JSX.Element {
   }, [])
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-black">
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-bg">
       <TitleBar />
 
       <div className="relative z-[1] flex flex-1 overflow-hidden">

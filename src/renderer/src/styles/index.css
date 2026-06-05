@@ -8,32 +8,53 @@
    ============================================================ */
 
 @layer base {
+  /* ============================================================
+     Theme tokens. The base palette is stored as space-separated RGB *channels* so both Tailwind
+     (`rgb(var(--x-rgb) / <alpha-value>)`) and these hand-written classes recolor from one source. The
+     full-color tokens below are DERIVED from the channels, so a `[data-theme]` block only has to swap the
+     base channels (+ a few specifics) to recolor the entire app — see lib/theme.ts + the blocks at the
+     bottom of this file. `:root` IS the default `terrabyte` (phosphor-green) theme; it has no override block.
+     ============================================================ */
   :root {
     color-scheme: dark;
 
-    --phosphor: #00ff88;
-    --phosphor-bright: #7cff6b;
-    --phosphor-dim: #1f5e3a;
-    --phosphor-ink: #9bf5b8;
+    /* ── Base palette — RGB channels (the only thing a theme overrides) ── */
     --phosphor-rgb: 0 255 136;
+    --phosphor-bright-rgb: 124 255 107;
+    --phosphor-dim-rgb: 31 94 58;
     --ink-rgb: 155 245 184;
+    --bg-rgb: 0 0 0;
+    --panel-rgb: 2 5 3;
+    --panel-lite-rgb: 4 9 10;
+    --hover-rgb: 10 22 17;
+    --lcd-rgb: 2 10 5;
+    --term-cyan-rgb: 0 229 255;
+    --term-amber-rgb: 255 176 0;
+    --term-magenta-rgb: 255 46 154;
+    --term-red-rgb: 255 48 48;
+
+    /* ── Full-color tokens derived from the channels (used by the classes below) ── */
+    --phosphor: rgb(var(--phosphor-rgb));
+    --phosphor-bright: rgb(var(--phosphor-bright-rgb));
+    --phosphor-dim: rgb(var(--phosphor-dim-rgb));
+    --phosphor-ink: rgb(var(--ink-rgb));
     --phosphor-faint: rgb(var(--phosphor-rgb) / 0.2);
     --phosphor-veil: rgb(var(--phosphor-rgb) / 0.08);
 
-    --bg: #000000;
-    --panel: #020503;
-    --panel-lite: #04090a;
-    --lcd: #020a05;
+    --bg: rgb(var(--bg-rgb));
+    --panel: rgb(var(--panel-rgb));
+    --panel-lite: rgb(var(--panel-lite-rgb));
+    --lcd: rgb(var(--lcd-rgb));
     --rule: rgb(var(--phosphor-rgb) / 0.18);
     --rule-dim: rgb(var(--phosphor-rgb) / 0.08);
-    --ink: #9bf5b8;
+    --ink: rgb(var(--ink-rgb));
     --ink-dim: rgb(var(--ink-rgb) / 0.58);
     --ink-faint: rgb(var(--ink-rgb) / 0.32);
 
-    --term-cyan: #00e5ff;
-    --term-amber: #ffb000;
-    --term-magenta: #ff2e9a;
-    --term-red: #ff3030;
+    --term-cyan: rgb(var(--term-cyan-rgb));
+    --term-amber: rgb(var(--term-amber-rgb));
+    --term-magenta: rgb(var(--term-magenta-rgb));
+    --term-red: rgb(var(--term-red-rgb));
 
     --font-display: 'VT323', 'Share Tech Mono', monospace;
     --font-mono: 'IBM Plex Mono', 'Share Tech Mono', monospace;
@@ -53,7 +74,7 @@
 
   body {
     margin: 0;
-    background-color: #000;
+    background-color: var(--bg);
     color: var(--ink);
     font-family: var(--font-mono);
     -webkit-font-smoothing: antialiased;
@@ -128,6 +149,12 @@
     inset: 0;
     pointer-events: none;
     z-index: 30;
+  }
+  /* The single CRT source of truth: the theme engine toggles `html.crt-off` (universal themes +
+     the manual toggle), which hides the whole CRT overlay AND the terminal grid for a flat, clean look. */
+  html.crt-off .crt-stack,
+  html.crt-off .term-grid-bg {
+    display: none;
   }
   .crt-scanlines {
     position: absolute;
@@ -550,4 +577,117 @@
     transform: none !important;
     clip-path: none !important;
   }
+}
+
+/* ============================================================
+   THEMES — a theme is just a bundle of CSS-var overrides on <html>. Unlayered (so they beat the layered
+   `:root` defaults); each block swaps only the base channels (+ a few specifics) and every derived token,
+   Tailwind utility, and canvas color recolors for free (the canvas reads these vars at runtime). The
+   default `terrabyte` (phosphor green) is `:root` itself — no block. See lib/theme.ts for the registry.
+   ============================================================ */
+
+/* ── CRT family (keep scanlines + grid + glow; just recolored) ── */
+html[data-theme='ice'] {
+  --phosphor-rgb: 111 230 255;
+  --phosphor-bright-rgb: 168 242 255;
+  --phosphor-dim-rgb: 8 48 63;
+  --ink-rgb: 191 239 255;
+  --bg-rgb: 2 4 12;
+  --panel-rgb: 7 13 22;
+  --panel-lite-rgb: 11 18 29;
+  --lcd-rgb: 3 6 13;
+}
+html[data-theme='amber'] {
+  --phosphor-rgb: 255 176 0;
+  --phosphor-bright-rgb: 255 201 64;
+  --phosphor-dim-rgb: 58 38 0;
+  --ink-rgb: 255 208 116;
+}
+html[data-theme='tangerine'] {
+  --phosphor-rgb: 255 122 24;
+  --phosphor-bright-rgb: 255 162 77;
+  --phosphor-dim-rgb: 42 19 3;
+  --ink-rgb: 255 192 137;
+  --bg-rgb: 6 3 0;
+  --panel-rgb: 12 6 1;
+  --panel-lite-rgb: 17 8 2;
+  --lcd-rgb: 7 3 0;
+}
+html[data-theme='crimson'] {
+  --phosphor-rgb: 255 46 77;
+  --phosphor-bright-rgb: 255 100 119;
+  --phosphor-dim-rgb: 42 6 16;
+  --ink-rgb: 255 148 162;
+  --bg-rgb: 6 1 2;
+  --panel-rgb: 12 3 5;
+  --panel-lite-rgb: 17 4 7;
+  --lcd-rgb: 7 2 3;
+}
+html[data-theme='vapor'] {
+  /* Duotone: pink accent (--phosphor) + cyan body ink (--ink) — classic vaporwave. */
+  --phosphor-rgb: 255 138 216;
+  --phosphor-bright-rgb: 255 179 230;
+  --phosphor-dim-rgb: 42 10 40;
+  --ink-rgb: 147 230 255;
+  --bg-rgb: 7 2 19;
+  --panel-rgb: 13 5 28;
+  --panel-lite-rgb: 17 8 35;
+  --lcd-rgb: 8 2 20;
+}
+html[data-theme='synthwave'] {
+  --phosphor-rgb: 255 58 200;
+  --phosphor-bright-rgb: 255 123 221;
+  --phosphor-dim-rgb: 42 10 40;
+  --ink-rgb: 255 156 230;
+  --bg-rgb: 5 0 12;
+  --panel-rgb: 11 3 22;
+  --panel-lite-rgb: 15 5 28;
+  --lcd-rgb: 5 0 16;
+}
+html[data-theme='ultraviolet'] {
+  --phosphor-rgb: 160 107 255;
+  --phosphor-bright-rgb: 194 160 255;
+  --phosphor-dim-rgb: 26 13 58;
+  --ink-rgb: 201 176 255;
+  --bg-rgb: 5 3 22;
+  --panel-rgb: 11 7 30;
+  --panel-lite-rgb: 15 10 37;
+  --lcd-rgb: 6 4 15;
+}
+
+/* ── Universal family (neutral palette, flat borders; CRT overlay dropped via `crt-off`) ── */
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --phosphor-rgb: 68 147 248;
+  --phosphor-bright-rgb: 106 169 255;
+  --phosphor-dim-rgb: 17 35 63;
+  --ink-rgb: 201 209 217;
+  --bg-rgb: 13 17 23;
+  --panel-rgb: 17 22 29;
+  --panel-lite-rgb: 22 27 34;
+  --lcd-rgb: 11 15 20;
+  /* Flat neutral borders instead of the phosphor-tinted rules. */
+  --rule: #2a313a;
+  --rule-dim: #20262d;
+}
+html[data-theme='light'] {
+  color-scheme: light;
+  --phosphor-rgb: 9 105 218;
+  --phosphor-bright-rgb: 10 92 194;
+  --phosphor-dim-rgb: 221 244 255;
+  --ink-rgb: 31 35 40;
+  --bg-rgb: 255 255 255;
+  --panel-rgb: 246 248 250;
+  --panel-lite-rgb: 238 241 244;
+  --lcd-rgb: 243 246 249;
+  --rule: #d0d7de;
+  --rule-dim: #e6eaef;
+}
+
+/* Universal themes drop the retro text glows + chromatic aberration for flat, maximum-readability chrome. */
+html[data-theme='dark'] .phosphor-glow,
+html[data-theme='light'] .phosphor-glow,
+html[data-theme='dark'] .crt-aberrate,
+html[data-theme='light'] .crt-aberrate {
+  text-shadow: none;
 }
