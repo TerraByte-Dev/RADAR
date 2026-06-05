@@ -1,6 +1,6 @@
 # RADAR — Session Handoff
 
-_Last updated: 2026-06-04. The resume point for a fresh session._
+_Last updated: 2026-06-05. The resume point for a fresh session._
 
 Read alongside **`CLAUDE.md`** (architecture + routing table + conventions), **`docs/DESIGN.md`**
 (TERRABYTE.SYS skin + the full radar spec), **`docs/BLIP-SCHEMA.md`** (the `BLIP.md` schema of
@@ -26,10 +26,10 @@ It evolved from the ToDoPlus task app; the repo is `TerraByte-Dev/ToDoPlus` and 
 
 - **Branch `feat/9-radar-pivot` → draft PR #10 (Closes #9). NOT merged to `main`.** All work since
   the pivot lives here. `main` is the pre-pivot ToDoPlus + the 3 merged polish PRs.
-- **Active sub-branch `feat/close-the-loop`** (off `feat/9-radar-pivot`) holds the latest work — see
-  the 2026-06-05 bullet. ⚠️ It currently has **three confirmed-good but UNCOMMITTED chunks**; commit
-  them first (exact commands in **`docs/SETTINGS-HANDOFF.md`**).
-- **Gates green:** `npm run typecheck` ✓ · `npm test` **128** (102 app + 26 engine) ✓ · `npm run build` ✓.
+- **Active sub-branch `feat/settings-themes`** (off `feat/close-the-loop`) holds the **Settings + theme
+  system** (5 commits, awaiting Tate's review — not pushed/merged). `feat/close-the-loop` has the prior
+  close-the-loop / deadlines-on-tasks / titlebar-chrome work (committed).
+- **Gates green:** `npm run typecheck` ✓ · `npm test` **152** (126 app + 26 engine) ✓ · `npm run build` ✓.
 - **Monorepo (npm workspaces):** `packages/blip-core` = the bulletproof `radar-blip` engine (parse/
   serialize `BLIP.md`, byte-faithful round-trip + atomic writes, CLI, `/blip` skills). App at repo root.
 - **Built so far (P0–P5 + several feedback rounds):** monorepo + vendored engine; `deadline`/
@@ -107,13 +107,32 @@ reappearing). **After any main/preload change, fully restart:** close the window
   compiled** (kept because `lib/nlp.ts` imports `Priority`/`DueDate`). Removing it cleanly is an open
   cleanup thread — leave it until you do that intentionally.
 
-## Next focus — robust Settings + theming  →  `docs/SETTINGS-HANDOFF.md`
+## ✅ Done — robust Settings + theming  (on `feat/settings-themes`; brief in `docs/SETTINGS-HANDOFF.md`)
 
-**The immediate next task** (Tate's call, 2026-06-05): build a robust, tabbed **Settings** centered on
-a **theme system** (recolor the CRT skin + clean Dark/Light themes), matching the OpenEdu/TerraPlayer
-signature, plus useful settings. The full plan, the reference file paths, and the key wrinkle (RADAR's
-Tailwind tokens are hardcoded hexes → must be refactored to CSS variables; the canvas needs runtime
-recolor) are in **`docs/SETTINGS-HANDOFF.md`**. Start there.
+Shipped the full theme system + tabbed Settings (the 5 phases from `docs/SETTINGS-HANDOFF.md`):
+1. **Theme engine** (`lib/theme.ts`): `THEMES` registry (8 CRT recolors + clean Dark/Light), `applyTheme`/
+   `resolveCrtOff`/`getThemeId` + `radar-theme-change`/`radar-crt-change` events, `useTheme` hook, and a
+   pre-paint `themeBoot()` (no flash). CRT is one source of truth — the `html.crt-off` class (engine-set)
+   gates the overlay + grid in CSS; the store's `crtEffects` is a synced mirror; the legacy pref migrates.
+2. **Tokenize**: every Tailwind color → `rgb(var(--…-rgb) / <alpha-value>)`; `:root` channel triples +
+   derived tokens + one `[data-theme]` block per theme in `index.css`. Default `terrabyte` is byte-identical.
+3. **Canvas theming** (`lib/radarColors.ts`): RadarView reads accent/ink off the CSS vars (cached, recomputed
+   on theme-change, off the rAF loop). Scope chrome themes; **semantic data colors stay fixed**.
+4. **Settings shell** (`components/Settings.tsx` + `settings/`): tabbed dialog (rail + search + autosave),
+   OpenEdu-shaped, re-skinned to TERRABYTE.SYS. Tabs: Appearance (theme picker + CRT toggle), Radar
+   (neglected threshold — now a real setting), Workspace, Keyboard, Data (export/import + reset layout),
+   About (version + electron-updater check→download→install via a new `window.api` update surface).
+5. **Docs**: `docs/DESIGN.md` → a **Themes** section (token model, registry, CRT mechanism, canvas recolor).
+
+Verified live (boot clean + a synthwave recolor + the open Settings shell, screenshotted). **Known caveat:**
+the universal **Light** theme is best-effort — the token system recolors the bulk, but the radar canvas +
+hardcoded `bg-black/40` scrims are inherently dark-scope, so Light is usable, not pixel-polished. Dark + the
+CRT family are excellent.
+
+## Next focus — Tate's call
+
+Settings/theming is done and awaiting review. Pick from the **Standing UX backlog** below (visual cohesion
+across the new surfaces is a natural follow-on now that Settings exists), or a new thread.
 
 ### Standing UX backlog (after / alongside settings)
 
