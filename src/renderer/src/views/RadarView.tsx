@@ -39,6 +39,8 @@ import {
 import { drivingTask, setTaskDue, taskDueDate, taskText, taskUrgency } from '../lib/taskDue'
 import { daysFromToday } from '../lib/date'
 import { isNeglected, projectsOnRadar } from '../lib/selectors'
+import { readRadarPalette, rgb, rgba } from '../lib/radarColors'
+import { THEME_CHANGE_EVENT } from '../lib/theme'
 import { useStore } from '../store/useStore'
 
 const AMBER = '#FFB000'
@@ -54,7 +56,8 @@ interface AttentionData {
   label: string
 }
 
-const ACCENT = '#00FF88'
+// Semantic data colors stay fixed across themes (red = overdue/error, amber = soon). Only the *accent*
+// (the green scope chrome) is theme-driven — read from CSS vars at runtime, see `paletteRef`.
 const SIGNAL_LOST = '#FF3030'
 const PING_MS = 950
 const MIN_PIN_PX = 8
@@ -179,6 +182,9 @@ export function RadarView(): JSX.Element {
   const geomRef = useRef({ cx: 0, cy: 0, R: 0 })
   const mouseRef = useRef({ x: 0, y: 0, inside: false })
   const dragRef = useRef<{ id: string; moved: boolean; startX: number; startY: number } | null>(null)
+  // Theme accent/ink channels for the canvas — read off the CSS vars, cached, recomputed only on a
+  // theme change (never per frame). The rAF loop reads `paletteRef.current`.
+  const paletteRef = useRef(readRadarPalette())
 
   const selected = selectedBlip ? projects.find((p) => p.blipPath === selectedBlip) : undefined
 
@@ -188,6 +194,15 @@ export function RadarView(): JSX.Element {
     }
     window.addEventListener('mouseup', onUp)
     return () => window.removeEventListener('mouseup', onUp)
+  }, [])
+
+  // Recolor the radar when the theme changes (the accent/ink CSS vars just changed on <html>).
+  useEffect(() => {
+    const onTheme = (): void => {
+      paletteRef.current = readRadarPalette()
+    }
+    window.addEventListener(THEME_CHANGE_EVENT, onTheme)
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, onTheme)
   }, [])
 
   useEffect(() => {
@@ -266,6 +281,8 @@ export function RadarView(): JSX.Element {
       const ref = new Date()
       const { contacts, sectorByKey, selectedBlip, hoveredId, shipColors, attnCount, attnRed, attnLabel } =
         stateRef.current
+      const acc = paletteRef.current.accent
+      const ink = paletteRef.current.ink
 
       ctx!.clearRect(0, 0, W, H)
       if (R < 1) {
@@ -275,9 +292,9 @@ export function RadarView(): JSX.Element {
       }
 
       const glow = ctx!.createRadialGradient(cx, cy, 0, cx, cy, R)
-      glow.addColorStop(0, 'rgba(0,255,136,.10)')
-      glow.addColorStop(0.6, 'rgba(0,255,136,.025)')
-      glow.addColorStop(1, 'rgba(0,255,136,0)')
+      glow.addColorStop(0, rgba(acc, 0.1))
+      glow.addColorStop(0.6, rgba(acc, 0.025))
+      glow.addColorStop(1, rgba(acc, 0))
       ctx!.fillStyle = glow
       ctx!.beginPath()
       ctx!.arc(cx, cy, R, 0, 7)
@@ -306,7 +323,7 @@ export function RadarView(): JSX.Element {
       for (let i = 1; i <= 6; i++) {
         ctx!.beginPath()
         ctx!.arc(cx, cy, (R * i) / 6, 0, 7)
-        ctx!.strokeStyle = 'rgba(0,255,136,.05)'
+        ctx!.strokeStyle = rgba(acc, 0.05)
         ctx!.lineWidth = 1
         ctx!.stroke()
       }
@@ -320,7 +337,7 @@ export function RadarView(): JSX.Element {
         ctx!.stroke()
         ctx!.setLineDash([])
       }
-      ctx!.strokeStyle = 'rgba(0,255,136,.08)'
+      ctx!.strokeStyle = rgba(acc, 0.08)
       ctx!.lineWidth = 1
       for (let a = 0; a < 360; a += 30) {
         const [x, y] = pt(R, a)
@@ -341,7 +358,7 @@ export function RadarView(): JSX.Element {
           ctx!.lineTo(x1, y1)
           ctx!.lineTo(x2, y2)
           ctx!.closePath()
-          ctx!.fillStyle = `rgba(0,255,136,${0.16 * (1 - i / N)})`
+          ctx!.fillStyle = rgba(acc, 0.16 * (1 - i / N))
           ctx!.fill()
         }
       }
@@ -349,9 +366,9 @@ export function RadarView(): JSX.Element {
       ctx!.beginPath()
       ctx!.moveTo(cx, cy)
       ctx!.lineTo(lx, ly)
-      ctx!.strokeStyle = ACCENT
+      ctx!.strokeStyle = rgb(acc)
       ctx!.lineWidth = 1.6
-      ctx!.shadowColor = hexA(ACCENT, 0.55)
+      ctx!.shadowColor = rgba(acc, 0.55)
       ctx!.shadowBlur = 12
       ctx!.stroke()
       ctx!.shadowBlur = 0
@@ -359,7 +376,7 @@ export function RadarView(): JSX.Element {
 
       ctx!.beginPath()
       ctx!.arc(cx, cy, R, 0, 7)
-      ctx!.strokeStyle = 'rgba(0,255,136,.45)'
+      ctx!.strokeStyle = rgba(acc, 0.45)
       ctx!.lineWidth = 1.4
       ctx!.stroke()
       for (let a = 0; a < 360; a += 15) {
@@ -368,7 +385,7 @@ export function RadarView(): JSX.Element {
         ctx!.beginPath()
         ctx!.moveTo(x1, y1)
         ctx!.lineTo(x2, y2)
-        ctx!.strokeStyle = 'rgba(0,255,136,.3)'
+        ctx!.strokeStyle = rgba(acc, 0.3)
         ctx!.lineWidth = 1
         ctx!.stroke()
       }
@@ -482,7 +499,7 @@ export function RadarView(): JSX.Element {
           ctx!.setLineDash([2, 3])
           ctx!.beginPath()
           ctx!.arc(x, y, size, 0, 7)
-          ctx!.strokeStyle = hexA('#9bf5b8', 0.7)
+          ctx!.strokeStyle = rgba(ink, 0.7)
           ctx!.lineWidth = 1.3
           ctx!.stroke()
           ctx!.setLineDash([])
@@ -552,9 +569,9 @@ export function RadarView(): JSX.Element {
           const w = ctx!.measureText(label).width + 10
           ctx!.fillStyle = 'rgba(0,0,0,.85)'
           ctx!.fillRect(x - w / 2, y - size - 20, w, 14)
-          ctx!.strokeStyle = hexA(ACCENT, 0.6)
+          ctx!.strokeStyle = rgba(acc, 0.6)
           ctx!.strokeRect(x - w / 2, y - size - 20, w, 14)
-          ctx!.fillStyle = ACCENT
+          ctx!.fillStyle = rgb(acc)
           ctx!.textAlign = 'center'
           ctx!.textBaseline = 'middle'
           ctx!.fillText(label, x, y - size - 13)
@@ -565,13 +582,13 @@ export function RadarView(): JSX.Element {
           ctx!.beginPath()
           ctx!.moveTo(cx, cy)
           ctx!.lineTo(x, y)
-          ctx!.strokeStyle = 'rgba(155,245,184,.35)'
+          ctx!.strokeStyle = rgba(ink, 0.35)
           ctx!.lineWidth = 1
           ctx!.stroke()
           ctx!.setLineDash([])
           ctx!.beginPath()
           ctx!.arc(x, y, size + 6, 0, 7)
-          ctx!.strokeStyle = proj.blipPath === selectedBlip ? ACCENT : '#fff'
+          ctx!.strokeStyle = proj.blipPath === selectedBlip ? rgb(acc) : rgba(ink, 0.95)
           ctx!.lineWidth = 1.4
           ctx!.stroke()
         }
@@ -605,21 +622,21 @@ export function RadarView(): JSX.Element {
           const pr = 9 + Math.sin(now / 600) * 3
           ctx!.beginPath()
           ctx!.arc(cx, cy, pr, 0, 7)
-          ctx!.strokeStyle = 'rgba(0,255,136,.25)'
+          ctx!.strokeStyle = rgba(acc, 0.25)
           ctx!.lineWidth = 1
           ctx!.stroke()
         }
         ctx!.beginPath()
         ctx!.arc(cx, cy, 3.2, 0, 7)
-        ctx!.fillStyle = ACCENT
-        ctx!.shadowColor = ACCENT
+        ctx!.fillStyle = rgb(acc)
+        ctx!.shadowColor = rgb(acc)
         ctx!.shadowBlur = 10
         ctx!.fill()
         ctx!.shadowBlur = 0
       }
 
       if (!contacts.length) {
-        ctx!.fillStyle = 'rgba(155,245,184,.45)'
+        ctx!.fillStyle = rgba(ink, 0.45)
         ctx!.textAlign = 'center'
         ctx!.font = '11px "IBM Plex Mono", ui-monospace, monospace'
         ctx!.fillText('NO CONTACTS — ADOPT A FOLDER OR ADD A WORKSPACE ROOT', cx, cy + R * 0.5)
