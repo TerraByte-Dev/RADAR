@@ -34,7 +34,7 @@ because I usually have a lot of projects on my radar at any moment."*
 
 ## The two codebases (and why this pivot is natural)
 
-| | **ToDoPlus** (`C:\Users\tatew\Desktop\ToDoPlus`) | **RADAR** (`…\TerraByte Solutions LLC\Production\Products\RADAR`) |
+| | **ToDoPlus** (this repo) | **RADAR** (`…\TerraByte Solutions LLC\Production\Products\RADAR`) |
 |---|---|---|
 | Grain | **Tasks** (fine), one JSON store | **Projects** (coarse), one `BLIP.md` per repo |
 | Radar axis | **Continuous, log-compressed days-to-due** (exact dates, drag-to-reschedule) | 3 discrete horizons (today/week/someday), drag snaps to bucket |
@@ -112,7 +112,7 @@ open questions above) and present it for approval **before** writing code.
 
 ## References
 
-- RADAR product folder: `C:\Users\tatew\Desktop\Tate\TerraByte Solutions LLC\Production\Products\RADAR`
+- RADAR product folder: `…\TerraByte Solutions LLC\Production\Products\RADAR` (local, off-repo)
   — read `CONCEPT.md`, `FEEDBACK.md`, `CLAUDE.md`, `SPEC.md`, `docs/BLIP-SCHEMA.md`, the desktop app
   (`apps/desktop/src`), and the engine (`packages/blip-core/src`). (`01-building/`, `02-documenting/`
   are empty.)

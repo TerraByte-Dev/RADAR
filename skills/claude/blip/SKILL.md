@@ -26,7 +26,8 @@ the target: don't nag mid-flow, and don't log trivial no-ops. Honor the boundari
 
 ## Resolve the CLI (do this first)
 Use the first form that works:
-1. `radar-blip <args>` — when it's on `PATH` (installed via `npm i -g radar-blip`, or wired up by `radar-blip skills install`).
+1. `radar-blip <args>` — when it's on `PATH` (installed via `npm i -g radar-blip`; note that
+   `radar-blip skills install` only copies the skill files — it does **not** put the CLI on `PATH`).
 2. `npx -y radar-blip <args>` — zero-install fallback (fetches the package on first run).
 
 Run from the **project's root folder** (the CLI writes `./BLIP.md` by default); to target
@@ -77,8 +78,13 @@ Tell the user briefly what changed (e.g., "Logged 3 lines; next action set to �
 `npm run dev` is running, the RADAR app reflects the change live via its file watcher.
 
 ## Notes & failure modes
-- **Quoting**: wrap every `--line`, `--next`, task text, and `--path` value in double quotes
-  so values containing spaces (paths, sentences) survive the shell.
+- **Quoting**: wrap every `--line`, `--next`, task text, and `--path` value in quotes so values
+  containing spaces (paths, sentences) survive the shell. When a value itself contains double
+  quotes: **PowerShell** — prefer single-quote wrapping for literal text
+  (`--line 'fixed the "bug" path'`), or escape inner quotes with backticks
+  (`` --line "fixed the `"bug`" path" ``); **bash/zsh** — double quotes with `\"` escapes
+  (`--line "fixed the \"bug\" path"`). Best practice: **rephrase the prose to avoid embedded
+  double quotes entirely** — it's the only form that works identically in every shell.
 - **`radar-blip: command not found`** → use the `npx -y radar-blip <args>` fallback, or
   install it once with `npm i -g radar-blip`.
 - **Never touch `# Notes`** or unknown frontmatter keys — the engine preserves them verbatim,

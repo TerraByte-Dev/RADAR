@@ -10,6 +10,11 @@ desktop radar visualizes it, live.* Phosphor-green on black, local-first, offlin
 
 `Electron` · `React 18` · `TypeScript` · `Tailwind` · `Zustand`
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-00E5A0)](LICENSE)
+![Local-first](https://img.shields.io/badge/local--first-no%20account%2C%20no%20server-00E5A0)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-2f2f2f)
+![Status](https://img.shields.io/badge/status-pre--1.0-orange)
+
 </div>
 
 ---
@@ -24,6 +29,12 @@ second. Your state is Markdown you own, in your repos, readable in any editor, v
 
 **Four invariants:** name = RADAR / unit = blip · AI-fed, never micromanaged · universal
 (errand → deadline → project → operation) · local-first plain files you own.
+
+## Status
+
+**Pre-1.0.** Installers aren't published yet — build from source (see [Develop](#develop); it's
+`npm install` + `npm run dev` and you're on the scope). The `radar-blip` npm package ships with
+the v1 release; until then, `npm i -g ./packages/blip-core` gives you the CLI + skills locally.
 
 ## The radar
 
@@ -157,6 +168,15 @@ src/
 plus an app-managed workspace at `~/Documents/RADAR` (Inbox). App config lives in
 `<userData>/radar-config.json`; UI prefs in `localStorage`. No telemetry, no network — the
 only optional network call is the update check.
+
+## Security model
+
+A `BLIP.md` is **untrusted input** — the app parses any blip it finds, including in repos you
+cloned but didn't write. So: links from blip content are allowlisted (`http:`/`https:` only),
+nothing in a blip is ever executed, and the renderer never touches disk (context isolation, no
+node integration, strict CSP — every write funnels through the typed IPC surface into the
+engine). Everything runs locally; the update check is the only network call. Vulnerability
+reports: [`.github/SECURITY.md`](.github/SECURITY.md).
 
 ## Design system
 

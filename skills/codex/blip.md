@@ -17,7 +17,8 @@ asked. One handoff per session; no nagging, no trivial no-ops. If there's no `BL
 repo alone (don't auto-`init`). Only ever write `BLIP.md` — never other files.
 
 ## Resolve the CLI (first form that works)
-1. `radar-blip <args>` — when it's on `PATH` (via `npm i -g radar-blip` or `radar-blip skills install`).
+1. `radar-blip <args>` — when it's on `PATH` (via `npm i -g radar-blip`; `radar-blip skills install`
+   only copies skill files, it does **not** add the CLI to `PATH`).
 2. `npx -y radar-blip <args>` — zero-install fallback.
 
 Run from the project root (the CLI writes `./BLIP.md`); else append `--path "DIR"`.
@@ -44,5 +45,8 @@ With no argument, the default is **handoff**.
   `--next "…"`, `--name`, `--tag` (repeatable).
 - **`show`** → `radar-blip show` (`--json` for machine output).
 
-Quote every `--line`, `--next`, task text, and `--path` value (paths contain spaces). After
-writing, state briefly what changed; if `npm run dev` is running, the RADAR app updates live.
+Quote every `--line`, `--next`, task text, and `--path` value (paths contain spaces). If a value
+itself contains double quotes: PowerShell — single-quote it (`--line 'fixed the "bug" path'`) or
+escape inner quotes with backticks; bash/zsh — escape with `\"`. Best: rephrase to avoid embedded
+double quotes entirely. After writing, state briefly what changed; if `npm run dev` is running,
+the RADAR app updates live.

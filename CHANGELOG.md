@@ -30,8 +30,23 @@ The first RADAR release — evolved from the ToDoPlus task app
   Settings (Appearance / Radar / Workspace / Keyboard / Data / About), settings export/import,
   in-app auto-update flow.
 - **TERRABYTE.SYS skin**: frameless window, BIOS boot splash, CRT overlay, phosphor glow.
+- A renderer **error boundary**: a crash in one view degrades gracefully instead of blanking
+  the whole app.
 
 ### Removed
 
 - The legacy ToDoPlus task stack (JSON task store, task CRUD IPC, task-grained types and
   helpers). Project state lives exclusively in per-project `BLIP.md` files you own.
+
+### Fixed
+
+- **Atomic-write durability**: engine writes flush to disk before the swap, so a crash
+  mid-write can never leave a truncated or corrupt `BLIP.md`.
+- **Engine round-trip fixes**: more `BLIP.md` shapes now survive parse → serialize
+  byte-faithfully.
+
+### Security
+
+- Everything sourced from a `BLIP.md` is treated as **untrusted input**: external links and
+  file open/reveal targets are allowlisted before the app acts on them. Threat model:
+  `.github/SECURITY.md`.

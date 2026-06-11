@@ -59,16 +59,30 @@ GH_TOKEN=… npx electron-builder --publish always       # add -w / -m / -l to t
 This uploads the installers + the `latest*.yml` update manifests to a GitHub Release;
 `autoUpdater.checkForUpdatesAndNotify()` then finds them on the next launch.
 
-### Prerequisites for a trusted production release
-- **Repo rename:** rename `TerraByte-Dev/ToDoPlus` → `RADAR` so `publish.repo` matches (and update
-  the git remote). Until then, point `publish.repo` at the current repo name.
-  ⚠ **Name collision:** a private `TerraByte-Dev/RADAR` (the original radar prototype,
-  2026-05-26) already exists — rename or delete it first to free the name. Sequence the release:
-  free the name → rename ToDoPlus → RADAR + make public → `npm publish` (so the package's
-  repository/homepage links resolve) → flip `About.tsx`'s repo link.
-- **Code signing:** Windows (Authenticode) and macOS (Developer ID + notarization) certificates are
-  required for installs that don't warn, and for macOS auto-update to work at all. CI injects them
-  via the standard electron-builder env vars (`CSC_LINK`/`CSC_KEY_PASSWORD`, `APPLE_*`).
+### Launch sequencing — do these **in order**
+
+> ⚠ **Why npm comes before going public:** both `/blip` skills tell agents to fall back to
+> `npx -y radar-blip`, which downloads **and executes** whatever package holds that name on the
+> npm registry — and `radar-blip` is currently **unclaimed**. If this repo goes public (skills
+> included) before the package is published, a squatter can claim the name and get arbitrary
+> code auto-executed on every agent machine that runs the skill. Publishing first closes that
+> window; the only cost is the package's repository/homepage links 404ing for the few minutes
+> the repo stays private.
+
+1. **Free the RADAR repo name.** A private `TerraByte-Dev/RADAR` (the original radar prototype,
+   2026-05-26) already holds it — rename or delete that repo first.
+2. **Rename `TerraByte-Dev/ToDoPlus` → `RADAR` while the repo is still private** (update the git
+   remote and `electron-builder.yml` → `publish.repo` to match).
+3. **`npm publish` `radar-blip`** (see above; `prepublishOnly` guards the build). Confirm the name
+   is still available right before publishing: `npm view radar-blip`.
+4. **Merge the PR stack so `main` is the real product.** Going public with the pre-pivot ToDoPlus
+   `main` — and no `LICENSE` on `main` — is a blocker.
+5. **Make the repo public.** The package's repository/homepage links now resolve.
+6. **Flip `About.tsx`'s repo link** to the renamed public repo.
+7. **Code-sign the installers.** Windows (Authenticode) and macOS (Developer ID + notarization)
+   certificates are required for installs that don't warn, and for macOS auto-update to work at
+   all. CI injects them via the standard electron-builder env vars (`CSC_LINK`/
+   `CSC_KEY_PASSWORD`, `APPLE_*`).
 
 ---
 
