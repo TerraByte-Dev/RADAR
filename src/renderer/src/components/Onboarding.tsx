@@ -58,8 +58,9 @@ export function Onboarding(): JSX.Element {
             <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
               Install the /blip skill (Claude Code + Codex)
             </div>
-            <code className="mt-1 block select-all bg-lcd px-2 py-1.5 font-mono text-[11px] text-ink">
-              npm i -g radar-blip && radar-blip skills install
+            {/* Two lines, not `a && b` — that's a parse error in Windows PowerShell 5.1. */}
+            <code className="mt-1 block select-all whitespace-pre bg-lcd px-2 py-1.5 font-mono text-[11px] text-ink">
+              {'npm i -g radar-blip\nradar-blip skills install'}
             </code>
           </div>
 
