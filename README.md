@@ -1,11 +1,12 @@
 <div align="center">
 
-# TODOPLUS//SYS
+# RADAR//SYS
 
-**A local-only desktop to-do app wearing the TerraByte Y2K-terminal skin.**
+**A personal project radar. Every project you're building is a blip on the scope.**
 
-Natural-language capture · full keyboard control · projects · P1–P4 priorities · subtasks ·
-notes · an activity timeline · a calendar — phosphor-green on black, offline, no account.
+Each blip is fed by a plain-text `BLIP.md` in that project's root, kept current by your AI
+coding agent via `/blip`. The loop: *agent writes state → plain file in your repo → the
+desktop radar visualizes it, live.* Phosphor-green on black, local-first, offline, no account.
 
 `Electron` · `React 18` · `TypeScript` · `Tailwind` · `Zustand`
 
@@ -15,112 +16,150 @@ notes · an activity timeline · a calendar — phosphor-green on black, offline
 
 ## Why
 
-Ideas come fast. ToDoPlus is the place to dump them without breaking flow — type a line,
-hit enter, get back to work. It's offline-first (your data never leaves the machine), driven
-almost entirely from the keyboard, and styled to match the rest of the **TerraByte Solutions**
-toolkit (see [`TerraPlayer`](https://github.com/TerraByte-Dev/TerraPlayer) and
-[`terrabyte-site`](https://github.com/TerraByte-Dev/terrabyte-site)): a CRT phosphor terminal
-that boots like an old workstation and glows like a green-screen.
+You don't need another task manager — you need to *see the whole fleet*: every repo, side
+project, and errand on one screen, with the truth about what's due, what's blocked, and what
+you've quietly abandoned. RADAR is that bird's-eye view, and you never feed it by hand. Your
+coding agent writes a `BLIP.md` as you work; the radar watches the files and redraws within a
+second. Your state is Markdown you own, in your repos, readable in any editor, versioned by git.
+
+**Four invariants:** name = RADAR / unit = blip · AI-fed, never micromanaged · universal
+(errand → deadline → project → operation) · local-first plain files you own.
+
+## The radar
+
+A live CRT scope (the default view) where:
+
+- **Distance from center = time to the *effective deadline*** on a continuous, log-compressed
+  scale — labeled rings at **NOW · 1 WEEK · 1 MONTH · 1 QUARTER**, plus an outer **SOMEDAY**
+  band. The effective deadline is the *soonest of* the nearest open task's `(due …)` date and
+  an optional project-level hard `deadline`, falling back to a fuzzy horizon
+  (`today | week | someday`). Overdue pulls into the bullseye.
+- **Size = priority** (1–5), **color + angle = category** — each category gets a labeled wedge
+  ("compass"); same-sector, same-day blips auto-fan apart. Drag a blip around the dial to pin
+  its angle (visual only).
+- **A project with tasks is a fleet** — a hollow ring with one ship marker per open task, each
+  tinted by its own due-date urgency. No tasks → a solid blip.
+- **The NOW center is alive** — it pulses red (overdue) or amber (neglected) with a count;
+  click it for the attention panel: overdue projects, overdue tasks, and projects you haven't
+  touched in N days (threshold in Settings).
+- **Drag to reschedule** — dropping a fleet on a new ring rewrites its *driving* task's
+  `(due …)`; a task-less blip gets its `deadline` moved. The outer band clears the date.
+- **Status visuals** — `blocked` pulses, `shipped` dims, `archived` hides, a `BLIP.md` that
+  fails to parse shows a red dashed "signal lost" ring (and is never overwritten), and
+  un-adopted repos appear as faint dashed **ghosts**.
+- A rotating sweep pings blips as it passes. Honors `prefers-reduced-motion`.
 
 ## Features
 
-- **Radar** *(the default view)* — a CRT radar that plots your active tasks as blips where
-  **distance from center is the actual time to the deadline** on a continuous, log-compressed scale:
-  dead-center = now, with labeled gridline rings at **NOW · 1 WEEK · 1 MONTH · 1 QUARTER** and an
-  outer **SOMEDAY** band for undated tasks. Timed tasks sit at fractional positions and creep inward
-  as the hour approaches; overdue tasks pull into the bullseye (red). Angle = project, size =
-  priority, color = the project's color. A sweep rotates and **pings** each blip as it passes;
-  subtask progress draws an arc around it. **Drag a blip to reschedule it to the exact date under the
-  cursor** — a live `+12D` preview follows your drag; drop it in the outer band to clear the date.
-  Click a blip for full detail; hover for a quick readout. Adapted from the TerraByte `RADAR` project.
-- **Natural-language quick-add** — `Pay rent tomorrow 5pm p1 #finance @home` parses the date,
-  priority (`p1`–`p4` or `!1`–`!3`), project (`#`), and tags (`@`) automatically.
-- **Strike-through completion** — checking a task crosses it out **in place** like a paper
-  checklist; it sinks to the bottom of the list instead of vanishing. Toggle `show completed`
-  to collapse the done items (they always stay in **Completed** + the **Logbook**).
-- **Today (merged horizon)** — the old Today + Upcoming in one list: overdue and due-today tasks
-  up top, future-dated ones faded below a `▾ horizon` divider so the whole runway is visible at once.
-- **Calendar** — a month grid of your scheduled tasks. Click a day to see/triage it, drag a
-  task to another day to reschedule (its time-of-day is preserved), and add straight into a day.
-- **Subtasks** — break a task into a checklist with its own progress count.
-- **Notes & Activity timeline** — freeform notes plus a running history (created, rescheduled,
-  completed, reopened, snoozed) and follow-up notes per task. The **Logbook** aggregates every
-  meaningful event across all tasks, grouped by day.
-- **Projects** — color-coded, right-click to rename / recolor / delete.
-- **Priorities** — P1–P4 flags that drive sort order.
-- **Snooze** — hide a task until later today / tomorrow / the weekend / next week.
-- **Command palette** (`⌘/Ctrl+K`) — jump to any view, run actions, toggle CRT effects.
-- **Global quick-add hotkey** (`⌘/Ctrl+Shift+Space`) — capture from anywhere, even unfocused.
-- **TERRABYTE.SYS skin** — boot sequence, CRT scanlines/vignette/flicker, phosphor glow,
-  brushed-metal window controls, LCD panels. Toggle the CRT overlay any time (sidebar `CRT` /
-  palette). Respects `prefers-reduced-motion`.
+- **Ghost blips + one-click adopt** — point RADAR at a folder of repos; anything with `.git`,
+  `CLAUDE.md`, or `AGENTS.md` but no `BLIP.md` surfaces as a ghost. Adopting writes a fresh
+  `BLIP.md` seeded honestly from git history (real recency + a first session-log entry from
+  the latest commit). Read anything; only ever *write* `BLIP.md`.
+- **Universal capture** — quick-add parses natural language (`Renew domain friday p1 #radar
+  @admin`); `#project` routes the task to that repo's `BLIP.md`, anything else lands in the
+  app-managed **Inbox** blip. Works globally via `Ctrl/⌘+Shift+Space`, even unfocused.
+- **Views** — **Due Soon** (effective deadline ≤ 7 days), **Neglected** (the safety net),
+  **Inbox**, **All Projects**, a **Calendar** of task milestones + hard deadlines (drag chips
+  between days to reschedule), and the **Logbook**: a GitHub-style activity heatmap over every
+  project's session log plus a cross-project session feed.
+- **Project detail** — field editors (horizon, deadline, priority, status, category, operation,
+  next action), the task checklist with inline per-task `(due …)` editors, the session-log
+  timeline, and links — every write goes through the engine.
+- **Settings + themes** — a tabbed Settings dialog (searchable): 8 CRT recolors
+  (TERRABYTE.SYS, Ice, Amber, Tangerine, Crimson, Vapor, Synthwave, Ultraviolet) + clean
+  Dark/Light, CRT overlay toggle, neglected threshold, workspace roots, settings
+  export/import, and in-app updates.
+- **TERRABYTE.SYS skin** — BIOS boot sequence, CRT scanlines/vignette/flicker, phosphor glow,
+  frameless window with a custom title bar. Same family as
+  [`TerraPlayer`](https://github.com/TerraByte-Dev/TerraPlayer).
+
+## The /blip loop
+
+```sh
+npm i -g radar-blip
+radar-blip skills install     # → Claude Code + Codex /blip skills
+```
+
+At the end of a working session your agent runs `radar-blip handoff` — appending dated bullets
+to the project's `# Session log` and updating `next_action`, atomically and round-trip-clean.
+The app's watcher picks the write up live. The engine (`packages/blip-core`, published as
+[`radar-blip`](packages/blip-core)) guarantees: **byte-faithful round-trips, atomic writes,
+append-only session log, and it never touches `# Notes` or unknown frontmatter keys.** Never
+hand-edit a `BLIP.md`; the CLI, the app, and the skill share this one engine, so they can't
+disagree. This repo carries [its own `BLIP.md`](BLIP.md) — RADAR is a blip on its own radar.
 
 ## Keyboard
 
-| Key | Action | | Key | Action |
-|---|---|---|---|---|
-| `⌘/Ctrl+K` | Command palette | | `x` / `space` | Toggle complete |
-| `q` / `⌘/Ctrl+N` | Quick add | | `enter` | Expand / collapse |
-| `j` / `↓` | Next task | | `s` | Star (mark active) |
-| `k` / `↑` | Previous task | | `⌫` / `del` | Delete |
+| Key | Action |
+|---|---|
+| `Ctrl/⌘+K` | Command palette (views, actions, jump to any project) |
+| `q` / `Ctrl/⌘+N` | Quick capture |
+| `Ctrl/⌘+Shift+Space` | **Global** quick capture (works when the app isn't focused) |
+| `Esc` | Close dialog / deselect blip |
+| any key | Skip the boot sequence |
 
-`⌘/Ctrl+Shift+Space` opens quick-add globally (works when the app isn't focused).
-
-## Quick-add syntax
+## Quick-capture syntax
 
 ```
-Ship the build friday 9am p1 #work @release
-└──── title ────┘ └─ date ─┘ │   │       └ tag
-                             │   └ project
+Ship the build friday 9am p1 #radar @release
+└──── title ────┘ └─ date ─┘ │   │      └ tag
+                             │   └ project → that repo's BLIP.md (else Inbox)
                              └ priority  (p1–p4 or !1–!3)
 ```
 
 ## Develop
 
-```bash
-npm install      # includes bundled brand fonts (@fontsource/*)
-npm run dev       # electron-vite dev with HMR
-npm test          # vitest (nlp, selectors, date/calendar)
-npm run typecheck # tsc, node + web projects
-npm run build     # production bundle
-npm run package   # electron-builder → Windows NSIS installer
+```sh
+npm install
+npm run dev        # build:core → electron-vite dev → boots into the radar
+npm test           # vitest: app (renderer libs + main store) + engine
+npm run typecheck  # tsc, node + web projects
+npm run build      # production bundle
+npm run package    # electron-builder → Win NSIS / mac dmg / linux AppImage
+npm run blip -- <args>   # the radar-blip CLI from source
 ```
 
-> Editing `src/main/**` or `src/preload/**` restarts the Electron main process; renderer
-> changes hot-reload.
+> Editing `src/main/**` or `src/preload/**` needs a full dev restart (new IPC channels don't
+> hot-register); renderer changes hot-reload. In PowerShell, quote the arg separator when
+> passing flags: `npm run blip "--" init --name X`. Releases: `docs/RELEASING.md`.
 
 ## Architecture
 
+npm workspaces monorepo — the `BLIP.md` engine is a real package, bundled into the app.
+
 ```
+packages/blip-core/       the radar-blip engine + CLI (parse/merge/serialize BLIP.md,
+                          byte-faithful round-trip, atomic writes) + bundled /blip skills
+skills/                   the /blip skill sources (claude + codex) — single source of truth
 src/
-  main/          Electron main — frameless window, window-control IPC, global hotkey
-    store/repository.ts   the ONLY code that touches disk (atomic JSON writes)
-    ipc/handlers.ts       bridges data channels → repository
-  preload/       typed window.api bridge (data + platform + window controls)
-  shared/types.ts         domain types + IPC channel names + TodoApi (one source of truth)
+  main/                   Electron main — frameless window, global hotkey, auto-update
+    store/                scan roots for BLIP.md (+ ghosts), engine read/write, chokidar
+                          watch, config, Inbox, git-seeded adopt — the ONLY code touching disk
+    ipc/radar.ts          radar:* channels + live projects-changed push
+  preload/                typed window.radar (project model) + window.api (app chrome)
+  shared/                 ProjectRecord/RadarConfig/RadarApi types + IPC channel names
   renderer/src/
-    App.tsx               TitleBar + Sidebar + view + dialogs + CRT/Boot overlays
-    components/           Sidebar, TaskRow, TaskDetail, QuickAdd, CommandPalette,
-                          context menus, TitleBar, CrtOverlay, BootSplash, …
-    views/                RadarView (canvas radar), TaskListView, CalendarView, LogbookView
-    store/useStore.ts     Zustand: data + UI + radar/calendar + prefs + all mutations
-    lib/                  nlp, date (+ calendar grid), radar (blip math), selectors, palette, useKeyboard
-    styles/index.css      TERRABYTE.SYS design system (see docs/DESIGN.md)
+    views/                RadarView (canvas scope), ProjectListView, CalendarView, LogbookView
+    components/           Sidebar, ProjectDetail, QuickAdd, CommandPalette, Settings + tabs,
+                          Onboarding, TitleBar, CrtOverlay, BootSplash, ActivityHeatmap
+    store/useStore.ts     Zustand: projects from scan + live watch; UI state; prefs
+    lib/                  pure, unit-tested math + parsing: radar/projectRadar (time scale,
+                          fanning, effective deadline), taskDue, nlp, selectors, theme, date
+    styles/index.css      TERRABYTE.SYS design system + CSS-variable themes (docs/DESIGN.md)
 ```
 
-**Data flow:** renderer → Zustand action → `window.api` (preload) → IPC → `Repository`.
-The renderer never touches disk. UI preferences (CRT on/off, show-completed) live in
-`localStorage`, separate from your task data.
+**Data flow:** renderer → Zustand action → `window.radar` (preload) → `radar:*` IPC → engine →
+`BLIP.md` on disk; the watcher pushes changes back. The renderer never touches disk.
 
-**Your data** lives in a single JSON file in the OS user-data directory
-(`%APPDATA%/todoplus/todoplus-data.json` on Windows), written atomically. No telemetry, no
-network — the app works with the cable unplugged.
+**Your data:** per-project `BLIP.md` files in *your* repos (schema: `docs/BLIP-SCHEMA.md`),
+plus an app-managed workspace at `~/Documents/RADAR` (Inbox). App config lives in
+`<userData>/radar-config.json`; UI prefs in `localStorage`. No telemetry, no network — the
+only optional network call is the update check.
 
 ## Design system
 
-The phosphor-green CRT skin is documented in [`docs/DESIGN.md`](docs/DESIGN.md) — color tokens,
-fonts, and the reusable CSS classes (`lcd-panel`, `metal-key`, `term-tag`, `phosphor-glow`,
-`crt-*`, …).
+The phosphor CRT skin + the theme engine are documented in [`docs/DESIGN.md`](docs/DESIGN.md) —
+tokens, fonts, reusable classes, the theme registry, and the full radar rendering spec.
 
 ---
 

@@ -1,6 +1,6 @@
-# TERRABYTE.SYS — ToDoPlus design system
+# TERRABYTE.SYS — RADAR design system
 
-ToDoPlus wears the same Y2K terminal / CRT phosphor skin as the rest of the TerraByte apps
+RADAR wears the same Y2K terminal / CRT phosphor skin as the rest of the TerraByte apps
 (`TerraPlayer`, `terrabyte-site`). This doc is the reference for the tokens and reusable
 classes so new UI stays on-brand.
 
@@ -39,11 +39,12 @@ Pure-black canvas, phosphor-green ink, terminal channel accents.
 > palette, so any pre-existing utility class renders on-brand without edits. New code should
 > prefer the explicit tokens (`phosphor`, `term.*`, `panel`, `lcd`, `rule`).
 
-**Project swatches** are a separate curated set — 16 calm, wheel-ordered hues in
+**Category swatches** are a separate curated set — 16 calm, wheel-ordered hues in
 `lib/palette.ts` (`PROJECT_COLORS`), kept clear of the phosphor accent and the overdue red so a
-project's color never reads as state. A new project auto-picks the **least-used** swatch
-(`nextProjectColor`), so projects stay visually distinct until the whole palette is in play; the
-recolor picker (`ProjectContextMenu`, a 4×4 grid) renders the same set.
+category's color never reads as state. A blip's color comes from its `category`:
+`projectRadar.categoryColor` gives the house categories (Client/Product/Admin/Personal/…) fixed
+picks and hashes any other name deterministically into the wheel — there is no per-project
+recolor UI; recategorize to recolor.
 
 ## Themes
 
@@ -107,14 +108,14 @@ Corners are squared (`borderRadius` scale flattened to 2–4px); dots/LEDs keep 
 
 | Class | What it is |
 |---|---|
-| `crt-stack` + `crt-scanlines` / `crt-vignette` / `crt-noise` / `crt-flicker` | Full-viewport CRT overlay (rendered by `CrtOverlay`, gated by the `crtEffects` pref). `pointer-events: none`. |
+| `crt-stack` + `crt-scanlines` / `crt-vignette` / `crt-noise` / `crt-flicker` | Full-viewport CRT overlay (rendered by `CrtOverlay`, gated in CSS by the theme engine's `html.crt-off` class — the store's `crtEffects` is a synced mirror). `pointer-events: none`. |
 | `term-grid` | Vector-grid background (sidebar). |
 | `term-grid-bg` | Faint masked grid backdrop behind app content. |
 | `track-scan` | Subtle scanline texture for scrollable panes. |
 | `panel` | Flat bordered surface. |
-| `lcd-panel` | Glowing inset LCD screen (task detail, dialogs). |
+| `lcd-panel` | Glowing inset LCD screen (project detail, dialogs). |
 | `lcd-inset` | LCD-style text input. |
-| `metal-key` / `.is-primary` | Brushed-metal button (window + add controls). |
+| `metal-key` / `.is-primary` | Brushed-metal button (close buttons, calendar nav, the Keyboard tab's keycaps). |
 | `btn` / `btn-primary` | Pill button, uppercase mono. |
 | `term-tag` | Bordered uppercase tag chip (`@tag`). |
 | `glow-line` | Thin glowing phosphor divider. |
@@ -126,12 +127,13 @@ Corners are squared (`borderRadius` scale flattened to 2–4px); dots/LEDs keep 
 
 ## Motion & accessibility
 
-- Animations: LED pulse, caret blink, CRT flicker, boot glitch, Framer layout transitions
-  (the satisfying "sink to bottom" when a task completes).
+- Animations: LED pulse, caret blink, CRT flicker, boot glitch — all hand-rolled CSS
+  (no animation library dependency).
 - `@media (prefers-reduced-motion: reduce)` disables flicker, glitch, pulse, and entrance
   animations, and the boot sequence fast-forwards.
-- The CRT overlay is **opt-out** at runtime: sidebar footer `CRT ON/OFF` or the command
-  palette. The preference persists to `localStorage`.
+- The CRT overlay is **opt-out** at runtime: the title-bar monitor button, Settings →
+  Appearance, or the command palette. The preference persists to `localStorage`
+  (`radar.crt-off`, owned by the theme engine).
 
 ## Radar
 
@@ -142,8 +144,9 @@ Colors mirror the palette: accent `#00FF88`, time‑rings NOW/1 WEEK/1 MONTH/1 Q
 `#FF3030` for overdue, `#FFB000` for "due soon", the category color otherwise.
 
 **Distance from center** is a continuous, log‑compressed time‑to‑deadline (`projectRadiusFrac` →
-`radiusFracForDays`): a hard `deadline` drives the exact radius, falling back to the fuzzy `horizon`
-band (today/week/someday). **Angle** is the project's **category sector** (`sectorBase`), drag‑pinnable
+`radiusFracForDays`) driven by the project's **effective deadline** — the *soonest of* its nearest
+incomplete task's `(due …)` date and an optional project‑level hard `deadline` — falling back to the
+fuzzy `horizon` band (today/week/someday). **Angle** is the project's **category sector** (`sectorBase`), drag‑pinnable
 to a per‑project `radar_angle` (visual only — never reassigns the category). **Size** = priority;
 same‑sector/same‑day blips **auto‑fan** (`layoutBlipAngles`, fanning *around* pinned obstacles, cached
 on a data signature and recomputed live only mid‑drag).
@@ -175,7 +178,8 @@ grown from the TerraByte `RADAR` project.
 ## Window chrome
 
 The BrowserWindow is **frameless** (`frame: false`); the renderer draws its own `TitleBar`
-(`TODOPLUS//SYS` logotype, live clock, open-count, minimize/maximize/close). Controls send
+(`RADAR//SYS` logotype, live clock, open-count, live version badge, the CRT + settings cluster,
+minimize/maximize/close). Controls send
 IPC (`window:minimize|maximize|close`) handled in `src/main/index.ts`. Drag regions use
 `.drag-region` / `.no-drag`.
 
