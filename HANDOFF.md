@@ -4,8 +4,7 @@ _Last updated: 2026-06-11. The resume point for a fresh session._
 
 Read alongside **`CLAUDE.md`** (architecture + routing table + conventions), **`docs/DESIGN.md`**
 (TERRABYTE.SYS skin + the full radar spec), **`docs/BLIP-SCHEMA.md`** (the `BLIP.md` schema of
-record), and **`docs/RELEASING.md`** (publishing). Origin story: `docs/RADAR-PIVOT.md`. Approved
-build plan: `~/.claude/plans/linked-yawning-scroll.md`.
+record), and **`docs/RELEASING.md`** (publishing). Origin story: `docs/RADAR-PIVOT.md`.
 
 ## What RADAR is
 
@@ -31,9 +30,12 @@ It evolved from the ToDoPlus task app; the repo is `TerraByte-Dev/ToDoPlus` and 
   3. `feat/settings-themes` → **draft PR #12** (theme engine + tabbed Settings).
   4. `chore/13-ship-v1` → **draft PR #14** (Closes #13) — the ship-v1 cleanup (legacy stack deleted,
      RADAR rebrand finished, README/DESIGN rewritten, publish-ready engine, dogfood `BLIP.md`).
+  5. `fix/15-agent-ready-public-prep` → **draft PR #16** (Closes #15) — the pre-public hardening
+     (59-agent adversarial audit → 39 confirmed findings, all fixed: security allowlists + IPC
+     guards, engine round-trip + concurrency bulletproofing, error boundary, launch sequencing).
   Review top-down or bottom-up, then merge each into its base (merge commits, per convention).
-- **Gates green:** `npm run typecheck` ✓ · `npm test` **140** (114 app + 26 engine — the 12 removed
-  with the legacy stack covered only deleted dead code) ✓ · `npm run build` ✓.
+- **Gates green:** `npm run typecheck` ✓ · `npm test` **212** (154 app + 58 engine) ✓ ·
+  `npm run build` ✓ · dev smoke under `sandbox: true` ✓.
 - **Monorepo (npm workspaces):** `packages/blip-core` = the bulletproof `radar-blip` engine (parse/
   serialize `BLIP.md`, byte-faithful round-trip + atomic writes, CLI, `/blip` skills). App at repo root.
 - **Built so far (P0–P5 + several feedback rounds):** monorepo + vendored engine; `deadline`/
@@ -62,6 +64,19 @@ It evolved from the ToDoPlus task app; the repo is `TerraByte-Dev/ToDoPlus` and 
   4. **Dogfood:** the repo carries its own engine-written `BLIP.md` (P1 / Product / week + the v1
      release prereqs as tasks). Run the `/blip` handoff at session end. The documented
      `npm run blip -- <args>` script now actually exists (it didn't).
+- **Session 2026-06-12 — pre-public hardening (`fix/15-agent-ready-public-prep`, PR #16, Closes #15):**
+  a 6-lens adversarial audit (agent contract, security, durability, CLI fuzz, repo hygiene, schema
+  edges) confirmed 39 findings; every one is fixed. Highlights: BLIP.md `links:` could *execute*
+  local files (now scheme-allowlisted end-to-end); `exec('code "path"')` injection (now constant-cmd
+  + cwd); the engine's round-trip guarantee broke on fenced `# Tasks` headings and prose inside the
+  Tasks section (now fence-aware + line-preserving); read-modify-write clobbered concurrent writers
+  (new `updateBlip` optimistic concurrency, used by CLI + app); self-write suppression swallowed
+  agent writes for 1.5 s (now content-hash echo detection); one garbage `deadline:` white-screened
+  the whole app (now guarded + ErrorBoundary); IPC paths validated (`ipc/guard.ts`); `sandbox: true`
+  (dev-smoke-tested); single-instance lock. **Launch sequencing is now load-bearing** — see
+  `docs/RELEASING.md`: npm-publish *before* going public (the skills' `npx -y radar-blip` fallback +
+  an unclaimed name = squatter code-execution), and a private `TerraByte-Dev/RADAR` prototype repo
+  blocks the rename until freed.
 
 ## Run it
 
@@ -117,9 +132,9 @@ reappearing). **After any main/preload change, fully restart:** close the window
   holds only `Priority`/`DueDate` (quick-add value types), the IPC channel names, and the slim
   `AppApi`. `BLIP.md` is the only data model.
 
-## ✅ Done — robust Settings + theming  (on `feat/settings-themes`; brief in `docs/SETTINGS-HANDOFF.md`)
+## ✅ Done — robust Settings + theming  (on `feat/settings-themes`, PR #12)
 
-Shipped the full theme system + tabbed Settings (the 5 phases from `docs/SETTINGS-HANDOFF.md`):
+Shipped the full theme system + tabbed Settings (5 phases):
 1. **Theme engine** (`lib/theme.ts`): `THEMES` registry (8 CRT recolors + clean Dark/Light), `applyTheme`/
    `resolveCrtOff`/`getThemeId` + `radar-theme-change`/`radar-crt-change` events, `useTheme` hook, and a
    pre-paint `themeBoot()` (no flash). CRT is one source of truth — the `html.crt-off` class (engine-set)
