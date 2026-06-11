@@ -24,9 +24,18 @@ export type RunGit = (dir: string, args: string[]) => Promise<string>
 // Record-separated so a subject containing spaces/quotes survives intact.
 const FORMAT = '%cI%n%h%n%an%n%s'
 
+/**
+ * Build the full git argv: repo-local config can execute programs (`core.fsmonitor`
+ * spawns a daemon, a pager is an arbitrary command) and the repos we read are cloned —
+ * i.e. untrusted — so those are neutralized for every invocation. Exported for tests.
+ */
+export function gitArgs(dir: string, args: string[]): string[] {
+  return ['-C', dir, '-c', 'core.fsmonitor=', '-c', 'core.pager=cat', '--no-pager', ...args]
+}
+
 const defaultRunGit: RunGit = (dir, args) =>
   new Promise((resolve, reject) => {
-    execFile('git', ['-C', dir, ...args], { timeout: 4000, windowsHide: true }, (err, stdout) => {
+    execFile('git', gitArgs(dir, args), { timeout: 4000, windowsHide: true }, (err, stdout) => {
       if (err) reject(err)
       else resolve(stdout)
     })

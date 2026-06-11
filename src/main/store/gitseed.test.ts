@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { parseGitSeed, readGitSeed } from './gitseed'
+import { gitArgs, parseGitSeed, readGitSeed } from './gitseed'
+
+describe('gitArgs', () => {
+  it('neutralizes repo-local config execution before the subcommand (untrusted clones)', () => {
+    const args = gitArgs('/repo', ['log', '-1', '--format=%cI'])
+    // Global flags first — git only honors them ahead of the subcommand.
+    expect(args.slice(0, 7)).toEqual([
+      '-C',
+      '/repo',
+      '-c',
+      'core.fsmonitor=',
+      '-c',
+      'core.pager=cat',
+      '--no-pager'
+    ])
+    expect(args.slice(7)).toEqual(['log', '-1', '--format=%cI'])
+  })
+})
 
 describe('parseGitSeed', () => {
   it('parses a well-formed log line into recency + subject', () => {

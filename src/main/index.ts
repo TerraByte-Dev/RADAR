@@ -22,12 +22,20 @@ function createWindow(): void {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      // The preload only uses contextBridge + ipcRenderer, so it runs sandboxed fine.
+      sandbox: true,
       contextIsolation: true
     }
   })
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
+
+  // The app never navigates — block renderer-initiated navigation outright. Dev exception:
+  // Vite's full-reload is a same-URL location.reload(), which does emit will-navigate.
+  mainWindow.webContents.on('will-navigate', (e) => {
+    if (isDev && e.url === mainWindow?.webContents.getURL()) return
+    e.preventDefault()
+  })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     // Same allowlist as radar:open-external — never hand a non-web URL to the OS.
@@ -125,35 +133,49 @@ function applyProdCsp(): void {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;"
+          "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; " +
+            "object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none';"
         ]
       }
     })
   })
 }
 
-app.whenReady().then(() => {
-  registerWindowControls()
-  applyProdCsp()
-  createWindow()
-  // RADAR project model (BLIP.md): scan/watch/write + live push to the renderer.
-  stopRadar = registerRadarHandlers(() => mainWindow)
-  registerGlobalQuickAdd()
-
-  // Auto-update — packaged builds only; a silent no-op until a release is published
-  // (see electron-builder.yml `publish` + docs/RELEASING.md). Drives the Settings → Updates pane.
-  registerUpdates(() => mainWindow)
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+// Single instance: a second launch quits immediately and focuses the running window instead
+// (two instances would race the watcher, the config file, and the global hotkey).
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
   })
-})
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+  app.whenReady().then(() => {
+    registerWindowControls()
+    applyProdCsp()
+    createWindow()
+    // RADAR project model (BLIP.md): scan/watch/write + live push to the renderer.
+    stopRadar = registerRadarHandlers(() => mainWindow)
+    registerGlobalQuickAdd()
 
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll()
-  stopRadar?.()
-})
+    // Auto-update — packaged builds only; a silent no-op until a release is published
+    // (see electron-builder.yml `publish` + docs/RELEASING.md). Drives the Settings → Updates pane.
+    registerUpdates(() => mainWindow)
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
+  })
+
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll()
+    stopRadar?.()
+  })
+}

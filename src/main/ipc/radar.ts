@@ -14,6 +14,7 @@ import {
 } from '../store/projects'
 import { ensureInbox, inboxAddTask } from '../store/workspace'
 import { startWatch, stopWatch } from '../store/watch'
+import { assertBlipPath, assertInitDir } from './guard'
 
 /** Scan every configured root (after making sure the Inbox blip exists), minus dismissed folders. */
 async function doScan(): Promise<ProjectRecord[]> {
@@ -23,13 +24,28 @@ async function doScan(): Promise<ProjectRecord[]> {
   return cfg.ignored.length ? all.filter((r) => !cfg.ignored.includes(r.path)) : all
 }
 
+/**
+ * Generation counter for push-producing scans: overlapping `doScan()`s (watcher bursts,
+ * handler-triggered refreshes) can resolve out of order, so only the freshest scan may
+ * send `radar:projects-changed` — a stale result arriving late is dropped.
+ */
+let scanGen = 0
+async function scanAndPush(getWindow: () => BrowserWindow | null): Promise<void> {
+  const gen = ++scanGen
+  const projects = await doScan()
+  if (gen !== scanGen) return // superseded by a fresher scan while we were reading
+  getWindow()?.webContents.send(IPC.radarProjectsChanged, projects)
+}
+
+/** Resolve + validate a renderer-supplied BLIP.md path against the configured roots. */
+function guardBlip(blipPath: string): string {
+  return assertBlipPath(blipPath, getConfig().roots)
+}
+
 /** (Re)start the watcher so live BLIP.md changes push a fresh scan to the renderer. */
 function rewatch(getWindow: () => BrowserWindow | null): void {
   const cfg = getConfig()
-  startWatch(cfg.roots, async () => {
-    const projects = await doScan()
-    getWindow()?.webContents.send(IPC.radarProjectsChanged, projects)
-  })
+  startWatch(cfg.roots, cfg.maxDepth, () => void scanAndPush(getWindow))
 }
 
 /**
@@ -74,20 +90,24 @@ async function openExternal(url: string): Promise<{ ok: boolean; reason?: string
  */
 export function registerRadarHandlers(getWindow: () => BrowserWindow | null): () => void {
   ipcMain.handle(IPC.radarScan, () => doScan())
-  ipcMain.handle(IPC.radarRead, (_e, blipPath: string) => readProject(blipPath))
+  ipcMain.handle(IPC.radarRead, (_e, blipPath: string) => readProject(guardBlip(blipPath)))
   ipcMain.handle(IPC.radarSetFields, (_e, blipPath: string, patch: BlipFieldPatch) =>
-    setFields(blipPath, patch)
+    setFields(guardBlip(blipPath), patch)
   )
-  ipcMain.handle(IPC.radarTask, (_e, blipPath: string, op: BlipTaskOp) => taskOp(blipPath, op))
+  ipcMain.handle(IPC.radarTask, (_e, blipPath: string, op: BlipTaskOp) =>
+    taskOp(guardBlip(blipPath), op)
+  )
   ipcMain.handle(
     IPC.radarHandoff,
     (_e, blipPath: string, lines: string[], next?: string, author?: string) =>
-      handoff(blipPath, lines, next, author)
+      handoff(guardBlip(blipPath), lines, next, author)
   )
-  ipcMain.handle(IPC.radarInit, (_e, dir: string, opts: InitProjectOptions) => initProject(dir, opts))
+  ipcMain.handle(IPC.radarInit, async (_e, dir: string, opts: InitProjectOptions) =>
+    initProject(await assertInitDir(dir), opts)
+  )
   ipcMain.handle(IPC.radarDelete, async (_e, blipPath: string) => {
-    await deleteProject(blipPath)
-    void doScan().then((p) => getWindow()?.webContents.send(IPC.radarProjectsChanged, p))
+    await deleteProject(guardBlip(blipPath))
+    void scanAndPush(getWindow)
   })
   ipcMain.handle(IPC.radarInboxAdd, (_e, text: string) => inboxAddTask(getConfig().workspace, text))
 
@@ -95,23 +115,23 @@ export function registerRadarHandlers(getWindow: () => BrowserWindow | null): ()
   ipcMain.handle(IPC.radarAddRoot, (_e, root: string) => {
     const cfg = addRoot(root)
     rewatch(getWindow)
-    void doScan().then((p) => getWindow()?.webContents.send(IPC.radarProjectsChanged, p))
+    void scanAndPush(getWindow)
     return cfg
   })
   ipcMain.handle(IPC.radarRemoveRoot, (_e, root: string) => {
     const cfg = removeRoot(root)
     rewatch(getWindow)
-    void doScan().then((p) => getWindow()?.webContents.send(IPC.radarProjectsChanged, p))
+    void scanAndPush(getWindow)
     return cfg
   })
   ipcMain.handle(IPC.radarIgnore, (_e, path: string) => {
     const cfg = addIgnore(path)
-    void doScan().then((p) => getWindow()?.webContents.send(IPC.radarProjectsChanged, p))
+    void scanAndPush(getWindow)
     return cfg
   })
   ipcMain.handle(IPC.radarUnignore, (_e, path: string) => {
     const cfg = removeIgnore(path)
-    void doScan().then((p) => getWindow()?.webContents.send(IPC.radarProjectsChanged, p))
+    void scanAndPush(getWindow)
     return cfg
   })
 
@@ -127,5 +147,5 @@ export function registerRadarHandlers(getWindow: () => BrowserWindow | null): ()
   ipcMain.handle(IPC.radarOpenInEditor, (_e, path: string) => openInEditor(path))
 
   rewatch(getWindow)
-  return () => stopWatch()
+  return () => void stopWatch()
 }

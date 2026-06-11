@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, rm, access } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, access, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ensureInbox, inboxAddTask, inboxBlipPath } from './workspace'
+import { ensureInbox, inboxAddTask, inboxBlipPath, inboxDir } from './workspace'
 
 describe('Inbox workspace (universal capture)', () => {
   it('ensureInbox creates the Inbox BLIP.md and is idempotent', async () => {
@@ -23,6 +23,34 @@ describe('Inbox workspace (universal capture)', () => {
       const rec = await inboxAddTask(ws, 'Pay rent')
       expect(rec.name).toBe('Inbox')
       expect(rec.tasks.map((t) => t.text)).toContain('Pay rent')
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
+
+  it('never clobbers an existing Inbox (exclusive create — the TOCTOU clobber primitive)', async () => {
+    const ws = await mkdtemp(join(tmpdir(), 'radar-ws-'))
+    try {
+      // Simulate a just-captured Inbox that lands before ensureInbox's create.
+      const existing = '---\nname: Inbox\n---\n\n# Tasks\n- [ ] precious capture\n'
+      await mkdir(inboxDir(ws), { recursive: true })
+      await writeFile(inboxBlipPath(ws), existing, 'utf8')
+      await ensureInbox(ws)
+      expect(await readFile(inboxBlipPath(ws), 'utf8')).toBe(existing)
+    } finally {
+      await rm(ws, { recursive: true, force: true })
+    }
+  })
+
+  it('serializes concurrent ensureInbox calls onto one creation (no lost writes)', async () => {
+    const ws = await mkdtemp(join(tmpdir(), 'radar-ws-'))
+    try {
+      const paths = await Promise.all([ensureInbox(ws), ensureInbox(ws), ensureInbox(ws)])
+      expect(new Set(paths)).toEqual(new Set([inboxBlipPath(ws)]))
+      // A capture racing the next ensureInbox (scan) must survive.
+      const [rec] = await Promise.all([inboxAddTask(ws, 'Renew passport'), ensureInbox(ws)])
+      expect(rec.tasks.map((t) => t.text)).toContain('Renew passport')
+      expect(await readFile(inboxBlipPath(ws), 'utf8')).toContain('Renew passport')
     } finally {
       await rm(ws, { recursive: true, force: true })
     }

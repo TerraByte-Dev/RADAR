@@ -1,6 +1,6 @@
-import { readdir, unlink } from 'node:fs/promises'
+import { access, readdir, unlink } from 'node:fs/promises'
 import { join, basename } from 'node:path'
-import { readBlip, writeBlipAtomic, createBlip } from 'radar-blip'
+import { readBlip, writeBlipAtomic, updateBlip, createBlip } from 'radar-blip'
 import type {
   BlipFieldPatch,
   BlipTaskOp,
@@ -16,8 +16,11 @@ import { readGitSeed, type GitSeed } from './gitseed'
  * for self-write suppression so the file watcher doesn't echo it back as a change.
  */
 
-/** Directories never worth descending into when hunting for BLIP.md files. */
-const IGNORE = new Set([
+/**
+ * Directories never worth descending into when hunting for BLIP.md files.
+ * Shared with the file watcher (store/watch.ts) so scan and watch skip identically.
+ */
+export const SKIP_DIRS: ReadonlySet<string> = new Set([
   'node_modules',
   'dist',
   'out',
@@ -67,7 +70,7 @@ async function* classify(dir: string, depth: number): AsyncGenerator<Candidate> 
   }
 
   for (const e of entries) {
-    if (e.isDirectory() && !IGNORE.has(e.name) && !e.name.startsWith('.')) {
+    if (e.isDirectory() && !SKIP_DIRS.has(e.name) && !e.name.startsWith('.')) {
       yield* classify(join(dir, e.name), depth - 1)
     }
   }
@@ -90,11 +93,24 @@ function ghostRecord(dir: string, ghostHints: string[]): ProjectRecord {
   }
 }
 
+/** Missing roots already warned about — warn once per root, not once per scan. */
+const warnedMissingRoots = new Set<string>()
+
 /** Scan every root for tracked projects (BLIP.md) and ghost blips (un-adopted repos). */
 export async function scanProjects(roots: string[], maxDepth = 5): Promise<ProjectRecord[]> {
   const seen = new Set<string>()
   const records: ProjectRecord[] = []
   for (const root of roots) {
+    try {
+      await access(root)
+    } catch {
+      // A dead root (unplugged drive, renamed folder…) would otherwise blank its blips silently.
+      if (!warnedMissingRoots.has(root)) {
+        warnedMissingRoots.add(root)
+        console.warn(`[radar] configured root does not exist, skipping: ${root}`)
+      }
+      continue
+    }
     for await (const c of classify(root, maxDepth)) {
       if (seen.has(c.dir)) continue
       seen.add(c.dir)
@@ -128,49 +144,54 @@ export async function readProject(
   }
 }
 
-/** Apply a managed-field patch (null clears an optional field) and re-read. */
+/**
+ * Apply a managed-field patch (null clears an optional field) and re-read.
+ * All app mutations go through `updateBlip` so a concurrent agent-CLI write to the same
+ * file is never clobbered (the patch replays on the fresh content). The self-write note
+ * happens inside the mutate so the echo hash always reflects the bytes that win the write.
+ */
 export async function setFields(blipPath: string, patch: BlipFieldPatch): Promise<ProjectRecord> {
-  const blip = await readBlip(blipPath)
-  if (patch.name !== undefined) blip.setField('name', patch.name)
-  if (patch.horizon !== undefined) blip.setHorizon(patch.horizon)
-  if (patch.priority !== undefined) blip.setPriority(patch.priority)
-  if (patch.category !== undefined) blip.setCategory(patch.category)
-  if (patch.status !== undefined) blip.setStatus(patch.status)
-  if (patch.next_action !== undefined) blip.setNextAction(patch.next_action)
-  if (patch.deadline !== undefined) blip.setDeadline(patch.deadline)
-  if (patch.operation !== undefined) blip.setOperation(patch.operation)
-  if (patch.radar_angle !== undefined) blip.setRadarAngle(patch.radar_angle)
-  if (patch.tags !== undefined) blip.setField('tags', patch.tags)
-  noteSelfWrite(blipPath)
-  await writeBlipAtomic(blipPath, blip)
+  await updateBlip(blipPath, (blip) => {
+    if (patch.name !== undefined) blip.setField('name', patch.name)
+    if (patch.horizon !== undefined) blip.setHorizon(patch.horizon)
+    if (patch.priority !== undefined) blip.setPriority(patch.priority)
+    if (patch.category !== undefined) blip.setCategory(patch.category)
+    if (patch.status !== undefined) blip.setStatus(patch.status)
+    if (patch.next_action !== undefined) blip.setNextAction(patch.next_action)
+    if (patch.deadline !== undefined) blip.setDeadline(patch.deadline)
+    if (patch.operation !== undefined) blip.setOperation(patch.operation)
+    if (patch.radar_angle !== undefined) blip.setRadarAngle(patch.radar_angle)
+    if (patch.tags !== undefined) blip.setField('tags', patch.tags)
+    noteSelfWrite(blipPath, blip.toString())
+  })
   return readProject(blipPath)
 }
 
-/** Mutate the project's `# Tasks` checklist. */
+/** Mutate the project's `# Tasks` checklist (concurrency-safe — see setFields). */
 export async function taskOp(blipPath: string, op: BlipTaskOp): Promise<ProjectRecord> {
-  const blip = await readBlip(blipPath)
-  switch (op.action) {
-    case 'add':
-      blip.addTask(op.text ?? '')
-      break
-    case 'done':
-      blip.setTaskDone(op.ref!, true)
-      break
-    case 'undone':
-      blip.setTaskDone(op.ref!, false)
-      break
-    case 'toggle':
-      blip.toggleTask(op.ref!)
-      break
-    case 'rm':
-      blip.removeTask(op.ref!)
-      break
-    case 'edit':
-      blip.editTask(op.ref!, op.text ?? '')
-      break
-  }
-  noteSelfWrite(blipPath)
-  await writeBlipAtomic(blipPath, blip)
+  await updateBlip(blipPath, (blip) => {
+    switch (op.action) {
+      case 'add':
+        blip.addTask(op.text ?? '')
+        break
+      case 'done':
+        blip.setTaskDone(op.ref!, true)
+        break
+      case 'undone':
+        blip.setTaskDone(op.ref!, false)
+        break
+      case 'toggle':
+        blip.toggleTask(op.ref!)
+        break
+      case 'rm':
+        blip.removeTask(op.ref!)
+        break
+      case 'edit':
+        blip.editTask(op.ref!, op.text ?? '')
+        break
+    }
+    noteSelfWrite(blipPath, blip.toString())
+  })
   return readProject(blipPath)
 }
 
@@ -181,17 +202,17 @@ export async function handoff(
   next?: string,
   author?: string
 ): Promise<ProjectRecord> {
-  const blip = await readBlip(blipPath)
-  blip.appendSession({ lines, author })
-  if (next) blip.setNextAction(next)
-  noteSelfWrite(blipPath)
-  await writeBlipAtomic(blipPath, blip)
+  await updateBlip(blipPath, (blip) => {
+    blip.appendSession({ lines, author })
+    if (next) blip.setNextAction(next)
+    noteSelfWrite(blipPath, blip.toString())
+  })
   return readProject(blipPath)
 }
 
 /** Delete a project's BLIP.md from disk (undo an accidental adopt). Best-effort. */
 export async function deleteProject(blipPath: string): Promise<void> {
-  noteSelfWrite(blipPath)
+  noteSelfWrite(blipPath, null) // null = expect an unlink echo, not a content match
   try {
     await unlink(blipPath)
   } catch {
@@ -225,7 +246,7 @@ export async function initProject(
     blip.setField('last_session', git.lastCommitISO)
   }
 
-  noteSelfWrite(blipPath)
+  noteSelfWrite(blipPath, blip.toString())
   await writeBlipAtomic(blipPath, blip)
   return readProject(blipPath, dir)
 }

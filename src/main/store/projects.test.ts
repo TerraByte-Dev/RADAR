@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
@@ -64,6 +64,20 @@ describe('scanProjects', () => {
     expect(ghost.ghost).toBe(true)
     expect(ghost.ghostHints).toContain('git')
     expect(ghost.blipPath).toBe(join(root, 'ghostrepo', 'BLIP.md'))
+  })
+
+  it('warns once — not once per scan — for a configured root that does not exist', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const dead = join(root, 'unplugged-drive-root')
+      const first = await scanProjects([root, dead], 5)
+      expect(first.map((p) => p.name)).toContain('Alpha') // live roots still scan
+      await scanProjects([root, dead], 5)
+      const hits = warn.mock.calls.filter((c) => String(c[0]).includes(dead))
+      expect(hits).toHaveLength(1)
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('maps the new radar fields onto the record', async () => {
