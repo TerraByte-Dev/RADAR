@@ -8,14 +8,14 @@ interface BootLine {
 }
 
 const LINES: BootLine[] = [
-  { text: 'TERRABYTE SYSTEMS — TODOPLUS BIOS v0.1.0', tone: 'info' },
+  { text: 'TERRABYTE SYSTEMS — RADAR BIOS', tone: 'info' },
   { text: '> POST .............................. OK', tone: 'ok' },
-  { text: '> MOUNT userData volume ............. OK', tone: 'ok' },
-  { text: '> LOAD todoplus-data.json ........... OK', tone: 'ok' },
+  { text: '> MOUNT workspace volume ............ OK', tone: 'ok' },
+  { text: '> SCAN roots for BLIP.md ............ OK', tone: 'ok' },
   { text: '> INIT phosphor display @ 0x00FF88 .. OK', tone: 'ok' },
-  { text: '> CALENDAR subsystem ................ OK', tone: 'ok' },
+  { text: '> LIVE-WATCH blip files ............. OK', tone: 'ok' },
   { text: '> NLP tokenizer ..................... READY', tone: 'ok' },
-  { text: '> ALL SYSTEMS NOMINAL', tone: 'info' }
+  { text: '> SWEEP ANTENNA ONLINE — ALL SYSTEMS NOMINAL', tone: 'info' }
 ]
 
 const LINE_MS = 110
@@ -111,15 +111,15 @@ export function BootSplash(): JSX.Element {
           />
 
           <span className="splash-title-wrap">
-            <span className="splash-title">TODOPLUS</span>
+            <span className="splash-title">RADAR</span>
             <span className="splash-title splash-title-r" aria-hidden>
-              TODOPLUS
+              RADAR
             </span>
             <span className="splash-title splash-title-g" aria-hidden>
-              TODOPLUS
+              RADAR
             </span>
           </span>
-          <span className="splash-tag">// GET IT DONE</span>
+          <span className="splash-tag">// EVERY PROJECT IS A BLIP</span>
 
           <div className="splash-frame bottom">
             <span className="splash-frame-corner">└</span>

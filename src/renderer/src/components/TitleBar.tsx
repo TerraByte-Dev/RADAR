@@ -21,10 +21,22 @@ export function TitleBar(): JSX.Element {
   const crtTheme = themeSupportsCrt(themeId)
   const [clock, setClock] = useState(() => formatClock(new Date()))
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [version, setVersion] = useState('')
 
   useEffect(() => {
     const id = window.setInterval(() => setClock(formatClock(new Date())), 1000)
     return () => window.clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    window.api
+      .getAppVersion()
+      .then((v) => alive && setVersion(v))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
   }, [])
 
   // Active projects on the radar (excludes archived).
@@ -51,9 +63,11 @@ export function TitleBar(): JSX.Element {
         <span className="hidden font-mono text-[10px] uppercase tracking-[0.12em] text-term-amber sm:inline">
           ● {open} PROJECTS
         </span>
-        <span className="hidden font-mono text-[9px] uppercase tracking-[0.12em] text-faint/70 sm:inline">
-          v0.1.0
-        </span>
+        {version && (
+          <span className="hidden font-mono text-[9px] uppercase tracking-[0.12em] text-faint/70 sm:inline">
+            v{version}
+          </span>
+        )}
 
         {/* CRT + settings — signature top-bar cluster (was the sidebar footer) */}
         <div className="flex items-center gap-2">
