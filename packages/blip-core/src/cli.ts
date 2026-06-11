@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, copyFileSync } from 'node:fs';
 import { join, resolve, basename, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { readBlip, writeBlipAtomic, createBlip } from './index.js';
+import { readBlip, writeBlipAtomic, updateBlip, createBlip } from './index.js';
 import { HORIZONS, STATUSES, coercePriority, coerceDeadline, type Horizon, type Status } from './types.js';
 
 interface Args {
@@ -52,10 +52,13 @@ function resolveDir(flags: Args['flags']): string {
 function resolveFile(flags: Args['flags']): string {
   return join(resolveDir(flags), 'BLIP.md');
 }
-async function requireBlip(file: string) {
+function requireFile(file: string): void {
   if (!existsSync(file)) {
     fail(`no BLIP.md in ${resolve(file, '..')} — run: radar-blip init`);
   }
+}
+async function requireBlip(file: string) {
+  requireFile(file);
   return readBlip(file);
 }
 function parseRef(token: string | undefined): number | string {
@@ -103,7 +106,10 @@ function applyFieldFlags(blip: import('./index.js').Blip, flags: Args['flags']):
   const operation = str(flags.operation);
   if (operation !== undefined) blip.setOperation(operation);
   const name = str(flags.name);
-  if (name !== undefined) blip.setField('name', name);
+  if (name !== undefined) {
+    if (!name.trim()) fail('--name must not be empty');
+    blip.setField('name', name);
+  }
   const tags = arrify(flags.tag);
   if (tags.length) blip.setField('tags', tags);
 }
@@ -209,55 +215,62 @@ async function main(): Promise<void> {
     }
 
     case 'set': {
-      const blip = await requireBlip(file);
-      applyFieldFlags(blip, flags);
-      await writeBlipAtomic(file, blip);
+      requireFile(file);
+      // Read-modify-write via updateBlip so a concurrent writer (the app) is never clobbered.
+      await updateBlip(file, (blip) => applyFieldFlags(blip, flags));
       process.stdout.write(`Updated ${file}\n`);
       return;
     }
 
     case 'task': {
-      const action = _[1];
-      const blip = await requireBlip(file);
-      switch (action) {
-        case 'add': {
-          const text = _.slice(2).join(' ').trim();
-          if (!text) fail('task text is required');
-          blip.addTask(text);
-          break;
-        }
-        case 'done':
-          blip.setTaskDone(parseRef(_[2]), true);
-          break;
-        case 'undone':
-          blip.setTaskDone(parseRef(_[2]), false);
-          break;
-        case 'toggle':
-          blip.toggleTask(parseRef(_[2]));
-          break;
-        case 'rm':
-          blip.removeTask(parseRef(_[2]));
-          break;
-        case 'list':
-          blip.tasks.forEach((t, i) => process.stdout.write(`${i + 1}. [${t.done ? 'x' : ' '}] ${t.text}\n`));
-          return;
-        default:
-          fail(`unknown task action "${action ?? ''}" (add|done|undone|toggle|rm|list)`);
+      const action = _[1] ?? '';
+      if (action === 'list') {
+        const blip = await requireBlip(file);
+        blip.tasks.forEach((t, i) => process.stdout.write(`${i + 1}. [${t.done ? 'x' : ' '}] ${t.text}\n`));
+        return;
       }
-      await writeBlipAtomic(file, blip);
+      if (!['add', 'done', 'undone', 'toggle', 'rm'].includes(action)) {
+        fail(`unknown task action "${action}" (add|done|undone|toggle|rm|list)`);
+      }
+      let text = '';
+      if (action === 'add') {
+        text = _.slice(2).join(' ').trim();
+        if (!text) fail('task text is required');
+      }
+      requireFile(file);
+      await updateBlip(file, (blip) => {
+        switch (action) {
+          case 'add':
+            blip.addTask(text);
+            break;
+          case 'done':
+            blip.setTaskDone(parseRef(_[2]), true);
+            break;
+          case 'undone':
+            blip.setTaskDone(parseRef(_[2]), false);
+            break;
+          case 'toggle':
+            blip.toggleTask(parseRef(_[2]));
+            break;
+          case 'rm':
+            blip.removeTask(parseRef(_[2]));
+            break;
+        }
+      });
       process.stdout.write(`Updated tasks in ${file}\n`);
       return;
     }
 
     case 'handoff': {
-      const blip = await requireBlip(file);
+      requireFile(file);
       const lines = arrify(flags.line);
       const summary = str(flags.summary);
       if (summary) lines.push(summary);
-      blip.appendSession({ lines, author: str(flags.author) });
       const next = str(flags.next);
-      if (next) blip.setNextAction(next);
-      await writeBlipAtomic(file, blip);
+      await updateBlip(file, (blip) => {
+        blip.appendSession({ lines, author: str(flags.author) });
+        if (next) blip.setNextAction(next);
+      });
       process.stdout.write(`Logged session in ${file}\n`);
       return;
     }

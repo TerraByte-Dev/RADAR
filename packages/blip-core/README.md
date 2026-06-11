@@ -83,19 +83,27 @@ An optional frontmatter `deadline:` is the project-level hard date for task-less
 `radar-blip` owns a known frontmatter subset (`name, horizon, deadline, priority, category,
 status, operation, next_action, radar_angle, created, last_session, tags, links`), the
 `# Tasks` checklist, and the append-only `# Session log`. **`# Notes`, any other heading, and
-any unknown frontmatter key are round-tripped verbatim.** Writes are atomic (temp file +
-rename), and a file that fails to parse is never overwritten. Never hand-edit a `BLIP.md` — go
-through `radar-blip` (or the app, or `/blip`); they share this one engine, so they can't
-disagree.
+any unknown frontmatter key are round-tripped verbatim** — fenced code blocks included, so an
+example `# Tasks` inside your notes never fools the engine, and prose or sub-bullets inside the
+real `# Tasks` section survive every checklist edit. Writes are atomic and durable (temp file +
+fsync + rename); the CLI's read-modify-write commands retry on concurrent changes instead of
+clobbering another writer. A file that fails to parse is never overwritten, and one whose
+frontmatter has YAML errors is readable but **read-only** until fixed. Never hand-edit a
+`BLIP.md` — go through `radar-blip` (or the app, or `/blip`); they share this one engine, so
+they can't disagree.
 
 ## Use as a library
 
 ```ts
-import { Blip, readBlip, writeBlipAtomic, createBlip } from 'radar-blip';
+import { Blip, readBlip, writeBlipAtomic, updateBlip, createBlip } from 'radar-blip';
 
 const blip = await readBlip('BLIP.md');
 blip.setHorizon('today').addTask('Ship it');
 await writeBlipAtomic('BLIP.md', blip);
+
+// Read-modify-write that can't clobber a concurrent writer: if the file changes
+// between read and write, the mutation is replayed on the fresh content (max 3 tries).
+await updateBlip('BLIP.md', (b) => b.toggleTask('Ship it'));
 ```
 
 Also exported: `detectAuthor`, `Blip.toReadModel()`, the `HORIZONS`/`STATUSES` enums, and the
