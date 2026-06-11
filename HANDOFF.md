@@ -157,8 +157,8 @@ Strong candidate threads (pick, reorder, or replace):
 - **Visual cohesion across the new surfaces.** `ProjectDetail`, `Settings`, `Onboarding`,
   `AttentionPanel`, the right-click menus, and the list views were built feature-first — give them a
   unified pass on spacing, hierarchy, motion, and the CRT skin (`docs/DESIGN.md` is the reference).
-  Framer Motion is a dependency but barely used now; tasteful transitions (panel open, view switches,
-  blip select) would lift the whole feel.
+  framer-motion was dropped in ship-v1 (zero imports) — reintroduce a motion lib (or hand-rolled
+  CSS transitions) if panel-open / view-switch / blip-select motion is wanted.
 - **Navigation flow.** Clicking a sidebar/list project currently jumps to the radar and opens the
   detail aside. There's no dedicated "project page." Decide the canonical flow: radar-centric (select →
   aside) vs. a richer project view. Make selecting, opening, and going back feel obvious.

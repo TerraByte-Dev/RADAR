@@ -57,7 +57,7 @@ Whiteboard sketch lives in the bedroom.
 | `priority` | integer | `1`–`5` (1 = top) | **RADAR** | radar **blip size** |
 | `category` | string | free text (e.g. `Client`, `Product`, `Admin`) | **RADAR** | radar **blip color** |
 | `status` | string | `active` \| `paused` \| `blocked` \| `shipped` \| `archived` | **RADAR** | radar styling / filtering |
-| `operation` | string | free text | **RADAR** | radar **sector** grouping (zoomable cluster) |
+| `operation` | string | free text | **RADAR** | reserved for the future operations **sector-zoom** (round-trips + editable today; nothing renders it yet) |
 | `next_action` | string | one short imperative line | **RADAR** | queue subtitle |
 | `radar_angle` | number | degrees `[0, 360)` | **RADAR** (app) | a **pinned** blip bearing (visual only; set by dragging — never reassigns the project) |
 | `created` | date | `YYYY-MM-DD` | engine (set once on `init`) | — |
@@ -74,7 +74,7 @@ Whiteboard sketch lives in the bedroom.
 
 The body is parsed by top-level (`#`) headings. Three heading names are meaningful (case-insensitive); **every other section, and any text before the first heading, is preserved untouched.**
 
-- **`# Tasks`** — RADAR-owned GFM checklist (`- [ ]` / `- [x]`). Managed by the app and `radar-blip task add|done|undone|toggle|rm|edit`. Open tasks become the **ship-markers** inside a project's fleet ring. A task may carry an optional trailing **`(due …)`** marker (e.g. `- [ ] Pay invoice (due 2026-07-01)` or `(due friday)`) — chrono-parsed by the app. **These task dues are where deadlines live:** the *soonest* incomplete task `(due …)` drives the whole blip's radar distance (its next milestone), tints that task's ship by urgency, and surfaces it in the NOW overdue panel. The engine keeps the text verbatim. A leading HTML comment is preserved.
+- **`# Tasks`** — RADAR-owned GFM checklist (`- [ ]` / `- [x]`). Managed by the app and `radar-blip task add|done|undone|toggle|rm|list` (the app additionally edits task text in place via the engine). Open tasks become the **ship-markers** inside a project's fleet ring. A task may carry an optional trailing **`(due …)`** marker (e.g. `- [ ] Pay invoice (due 2026-07-01)` or `(due friday)`) — chrono-parsed by the app. **These task dues are where deadlines live:** the *soonest* incomplete task `(due …)` drives the whole blip's radar distance (its next milestone), tints that task's ship by urgency, and surfaces it in the NOW overdue panel. The engine keeps the text verbatim. A leading HTML comment is preserved.
 - **`# Session log`** — append-only. `radar-blip handoff` adds a dated `## YYYY-MM-DD — <author>` entry and updates `last_session` + `next_action`. Prior entries are never edited or reordered.
 - **`# Notes`** — human-only. The engine and skills never rewrite this section or derive behavior from it.
 
@@ -98,6 +98,6 @@ The engine's serialize step is a **faithful round-trip**: parsing a file and ser
 - `priority` → blip **diameter** (P1 largest).
 - `category` → blip **color** (curated palette; stable hash for new categories).
 - `status` → **styling**: `blocked` pulses, `shipped` dims, `archived` hidden from the active scope, parse-error = "signal lost".
-- `operation` → groups projects into a radar **sector** you can zoom into.
+- `operation` → reserved for the future **sector-zoom** (grouping projects into a zoomable wedge); the field round-trips and is editable, but nothing renders it yet.
 - `radar_angle` → a **pinned bearing** (drag a blip to set it; clears to re-join the auto fan).
 - `# Tasks` → a project with tasks becomes a **fleet** (a hollow ring with one ship-marker per open task); ships tint by each task's `(due …)` urgency. A project with no tasks is a single solid blip.

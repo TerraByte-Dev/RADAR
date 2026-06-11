@@ -58,7 +58,8 @@ A live CRT scope (the default view) where:
 - **Universal capture** — quick-add parses natural language (`Renew domain friday p1 #radar
   @admin`); `#project` routes the task to that repo's `BLIP.md`, anything else lands in the
   app-managed **Inbox** blip. Works globally via `Ctrl/⌘+Shift+Space`, even unfocused.
-- **Views** — **Due Soon** (effective deadline ≤ 7 days), **Neglected** (the safety net),
+- **Views** — **Due Soon** (effective deadline ≤ 7 days, or a `today`/`week` horizon),
+  **Neglected** (the safety net),
   **Inbox**, **All Projects**, a **Calendar** of task milestones + hard deadlines (drag chips
   between days to reschedule), and the **Logbook**: a GitHub-style activity heatmap over every
   project's session log plus a cross-project session feed.
@@ -82,8 +83,9 @@ radar-blip skills install     # → Claude Code + Codex /blip skills
 
 At the end of a working session your agent runs `radar-blip handoff` — appending dated bullets
 to the project's `# Session log` and updating `next_action`, atomically and round-trip-clean.
-The app's watcher picks the write up live. The engine (`packages/blip-core`, published as
-[`radar-blip`](packages/blip-core)) guarantees: **byte-faithful round-trips, atomic writes,
+The app's watcher picks the write up live. The engine ([`packages/blip-core`](packages/blip-core),
+npm name `radar-blip` — first publish lands with the v1 release; until then
+`npm i -g ./packages/blip-core`) guarantees: **byte-faithful round-trips, atomic writes,
 append-only session log, and it never touches `# Notes` or unknown frontmatter keys.** Never
 hand-edit a `BLIP.md`; the CLI, the app, and the skill share this one engine, so they can't
 disagree. This repo carries [its own `BLIP.md`](BLIP.md) — RADAR is a blip on its own radar.
@@ -102,9 +104,9 @@ disagree. This repo carries [its own `BLIP.md`](BLIP.md) — RADAR is a blip on 
 
 ```
 Ship the build friday 9am p1 #radar @release
-└──── title ────┘ └─ date ─┘ │   │      └ tag
-                             │   └ project → that repo's BLIP.md (else Inbox)
-                             └ priority  (p1–p4 or !1–!3)
+└── title ───┘ └─ date ─┘ │  │      └ tag
+                          │  └ project → that repo's BLIP.md (else Inbox)
+                          └ priority  (p1–p4 or !1–!3)
 ```
 
 ## Develop

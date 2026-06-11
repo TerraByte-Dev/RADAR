@@ -72,7 +72,7 @@ Usage:
   radar-blip task add "text"        [--path DIR]
   radar-blip task done|undone|toggle|rm  <n|text>   [--path DIR]
   radar-blip task list              [--path DIR]
-  radar-blip handoff  --next "..." [--line "did X" --line "did Y"] [--author A] [--path DIR]
+  radar-blip handoff  [--line "did X" --line "did Y"] [--next "..."] [--summary "..."] [--author A] [--path DIR]
   radar-blip skills install         [--claude] [--codex] [--force]
 
 Horizons: ${HORIZONS.join(', ')}

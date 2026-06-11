@@ -40,7 +40,8 @@
   },
   "files": [
     "dist",
-    "skills"
+    "skills",
+    "src"
   ],
   "engines": {
     "node": ">=20"

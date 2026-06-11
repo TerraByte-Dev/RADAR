@@ -59,8 +59,6 @@ export type UpdateEvent =
 export interface AppApi {
   /** Subscribe to the global quick-add hotkey; returns an unsubscribe fn. */
   onOpenQuickAdd(cb: () => void): () => void
-  /** Host OS platform (e.g. 'win32', 'darwin') — drives title-bar chrome. */
-  platform: string
   /** Frameless-window controls. */
   minimizeWindow(): void
   maximizeWindow(): void

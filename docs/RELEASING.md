@@ -14,10 +14,13 @@ Bump versions first: the app version in `package.json`, the engine version in
 ## 1. Publish `radar-blip` to npm
 
 ```bash
-npm run build:core                  # tsc + bundle the /blip skills into the package
 cd packages/blip-core
 npm publish --access public         # requires `npm login` as the package owner
 ```
+
+`prepublishOnly` ("npm test") rebuilds the engine (tsc + skill bundling) and runs its test
+suite automatically on publish — `dist/` and `skills/` are git-ignored, so without the guard a
+fresh-clone publish would silently ship an empty tarball.
 
 The package's `files` are `dist` + `skills`, so the compiled engine, the `radar-blip` bin, and
 both `/blip` skills ship in the tarball. End users then:
@@ -59,6 +62,10 @@ This uploads the installers + the `latest*.yml` update manifests to a GitHub Rel
 ### Prerequisites for a trusted production release
 - **Repo rename:** rename `TerraByte-Dev/ToDoPlus` → `RADAR` so `publish.repo` matches (and update
   the git remote). Until then, point `publish.repo` at the current repo name.
+  ⚠ **Name collision:** a private `TerraByte-Dev/RADAR` (the original radar prototype,
+  2026-05-26) already exists — rename or delete it first to free the name. Sequence the release:
+  free the name → rename ToDoPlus → RADAR + make public → `npm publish` (so the package's
+  repository/homepage links resolve) → flip `About.tsx`'s repo link.
 - **Code signing:** Windows (Authenticode) and macOS (Developer ID + notarization) certificates are
   required for installs that don't warn, and for macOS auto-update to work at all. CI injects them
   via the standard electron-builder env vars (`CSC_LINK`/`CSC_KEY_PASSWORD`, `APPLE_*`).
@@ -67,7 +74,8 @@ This uploads the installers + the `latest*.yml` update manifests to a GitHub Rel
 
 ## Checklist
 
-- [ ] Bump app + engine versions; update any changelog.
+- [ ] Bump app + engine versions; move the `CHANGELOG.md` **[Unreleased]** section under the
+      new version heading.
 - [ ] `npm run typecheck && npm test && npm run build` green.
 - [ ] `npm publish` the engine (if it changed).
 - [ ] `electron-builder --publish always` with signing creds + `GH_TOKEN`.

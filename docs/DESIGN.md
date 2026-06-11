@@ -29,15 +29,14 @@ Pure-black canvas, phosphor-green ink, terminal channel accents.
 | Muted text | `muted` | `rgb(155 245 184 / .58)` |
 | Faint text | `faint` | `rgb(155 245 184 / .32)` |
 | Terminal cyan | `term.cyan` | `#00E5FF` |
-| Terminal amber | `term.amber` / `p2` | `#FFB000` |
+| Terminal amber | `term.amber` | `#FFB000` |
 | Terminal magenta | `term.magenta` | `#FF2E9A` |
 | Terminal red | `term.red` / `p1` | `#FF3030` |
-| Priority P3 | `p3` | `#00E5FF` (cyan) |
 
 > **Back-compat:** the original semantic names (`bg`, `surface`, `elevated`, `ink`, `muted`,
-> `faint`, `accent`, `accent-soft`, `border`, `p1`–`p4`) are **remapped** onto the phosphor
-> palette, so any pre-existing utility class renders on-brand without edits. New code should
-> prefer the explicit tokens (`phosphor`, `term.*`, `panel`, `lcd`, `rule`).
+> `faint`, `accent`, `accent-soft`, `border`, `p1` — alert red) are **remapped** onto the
+> phosphor palette, so any pre-existing utility class renders on-brand without edits. New code
+> should prefer the explicit tokens (`phosphor`, `term.*`, `panel`, `lcd`, `rule`).
 
 **Category swatches** are a separate curated set — 16 calm, wheel-ordered hues in
 `lib/palette.ts` (`PROJECT_COLORS`), kept clear of the phosphor accent and the overdue red so a

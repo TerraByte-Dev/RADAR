@@ -16,7 +16,6 @@ const api: AppApi = {
     ipcRenderer.on(IPC.openQuickAdd, listener)
     return () => ipcRenderer.removeListener(IPC.openQuickAdd, listener)
   },
-  platform: process.platform,
   minimizeWindow: (): void => ipcRenderer.send(IPC.minimizeWindow),
   maximizeWindow: (): void => ipcRenderer.send(IPC.maximizeWindow),
   closeWindow: (): void => ipcRenderer.send(IPC.closeWindow),

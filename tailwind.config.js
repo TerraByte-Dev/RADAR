@@ -21,11 +21,8 @@ module.exports = {
         // Accent === phosphor
         accent: 'rgb(var(--phosphor-rgb) / <alpha-value>)',
         'accent-soft': 'rgb(var(--phosphor-rgb) / 0.10)',
-        // Priority flags → terminal channel colors
+        // Alert red (overdue, destructive) — alias of term.red
         p1: 'rgb(var(--term-red-rgb) / <alpha-value>)',
-        p2: 'rgb(var(--term-amber-rgb) / <alpha-value>)',
-        p3: 'rgb(var(--term-cyan-rgb) / <alpha-value>)',
-        p4: 'rgb(var(--ink-rgb) / 0.45)',
 
         // ── New semantic tokens ──
         panel: 'rgb(var(--panel-rgb) / <alpha-value>)',

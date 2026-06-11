@@ -35,7 +35,7 @@ radar-blip init     [--name N] [--horizon today|week|someday] [--priority 1-5] [
 radar-blip show     [--json]
 radar-blip set      [--horizon H] [--priority 1-5] [--category C] [--status S] [--next "…"] [--deadline YYYY-MM-DD] [--operation O] [--name N] [--tag T …]
 radar-blip task     add "text" | done|undone|toggle|rm <n|text> | list
-radar-blip handoff  --line "did X" --line "did Y" --next "next action" [--summary "…"] [--author A]
+radar-blip handoff  [--line "did X" --line "did Y"] [--next "next action"] [--summary "…"] [--author A]
 radar-blip skills install [--claude] [--codex] [--force]
 ```
 
