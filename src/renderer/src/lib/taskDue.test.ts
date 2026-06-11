@@ -34,6 +34,11 @@ describe('taskText', () => {
     expect(taskText('Pay rent (due 2026-07-01)')).toBe('Pay rent')
     expect(taskText('No marker here')).toBe('No marker here')
   })
+
+  it('leaves a "(due …)" tail chrono rejects alone — task text, not a marker', () => {
+    expect(taskText('Build (due somewhen-ish)')).toBe('Build (due somewhen-ish)')
+    expect(taskText('Call Bob (due diligence review)')).toBe('Call Bob (due diligence review)')
+  })
 })
 
 describe('urgency', () => {
@@ -74,5 +79,16 @@ describe('setTaskDue', () => {
     expect(setTaskDue('Pay rent', '2026-07-01')).toBe('Pay rent (due 2026-07-01)')
     expect(setTaskDue('Pay rent (due 2026-06-01)', '2026-07-01')).toBe('Pay rent (due 2026-07-01)')
     expect(setTaskDue('Pay rent (due 2026-06-01)', null)).toBe('Pay rent')
+  })
+
+  it('never destroys an unparseable "(due …)" tail — the marker lives alongside it', () => {
+    expect(setTaskDue('Call Bob (due diligence review)', '2026-07-01')).toBe(
+      'Call Bob (due diligence review) (due 2026-07-01)'
+    )
+    expect(setTaskDue('Call Bob (due diligence review)', null)).toBe('Call Bob (due diligence review)')
+    // …and clearing the real marker later leaves the original text intact
+    expect(setTaskDue('Call Bob (due diligence review) (due 2026-07-01)', null)).toBe(
+      'Call Bob (due diligence review)'
+    )
   })
 })

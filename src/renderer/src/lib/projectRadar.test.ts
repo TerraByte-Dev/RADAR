@@ -81,6 +81,27 @@ describe('effective deadline (deadlines live on tasks)', () => {
   })
 })
 
+describe('garbage deadline guards (hand-edited/hostile BLIP.md)', () => {
+  it('treats an unparseable deadline as "no dated driver" — never NaN', () => {
+    const bad = p({ deadline: 'tomorrow', horizon: 'week' })
+    expect(datedDeadlineDays(bad, REF)).toBeNull()
+    expect(daysUntilDeadline(bad, REF)).toBe(7) // falls back to the horizon band
+    expect(Number.isFinite(projectRadiusFrac(bad, REF))).toBe(true)
+  })
+
+  it('a garbage "timed" deadline (contains a T) parks at the rim instead of vanishing', () => {
+    const bad = p({ deadline: 'TBD' }) // includes('T') → live-clock branch → NaN math pre-guard
+    expect(daysUntilDeadline(bad, REF)).toBeNull() // → its someday horizon
+    expect(projectRadiusFrac(bad, REF)).toBeGreaterThan(0.9) // someday band, still visible
+    expect(isOverdueProject(bad, REF)).toBe(false)
+  })
+
+  it('never renders a "NaNd overdue" label', () => {
+    expect(projectRelativeDeadline(p({ deadline: 'asap' }), REF)).toBe('someday')
+    expect(projectRelativeDeadline(p({ deadline: 'asap', horizon: 'today' }), REF)).toBe('today')
+  })
+})
+
 describe('projectRadiusFrac', () => {
   it('is monotonic: sooner deadline sits closer to center', () => {
     const soon = projectRadiusFrac(p({ deadline: '2026-06-04' }), REF)

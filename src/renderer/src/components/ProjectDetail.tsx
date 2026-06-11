@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, ExternalLink, FolderOpen, RotateCcw, Sparkles, X } from 'lucide-react'
 import type { BlipStatus, Horizon, ProjectRecord } from '@shared/radar'
 import { BLIP_STATUSES, HORIZONS } from '@shared/radar'
+import { isClickableLink, normalizeLinks } from '../lib/links'
 import { parseSessionLog } from '../lib/selectors'
 import { categoryColor, projectRelativeDeadline } from '../lib/projectRadar'
 import { setTaskDue, taskDueDate, taskText, urgencyForDue } from '../lib/taskDue'
@@ -52,6 +53,7 @@ export function ProjectDetail({
   const p = project
   const log = parseSessionLog(p.sessionLog)
   const done = p.tasks.filter((t) => t.done).length
+  const links = normalizeLinks(p.links)
 
   return (
     <div className="flex h-full flex-col">
@@ -316,35 +318,28 @@ export function ProjectDetail({
             )}
           </div>
 
-          {/* Links */}
-          {Array.isArray(p.links) && p.links.length > 0 && (
+          {/* Links — string entries and the schema's {label: url} object form alike */}
+          {links.length > 0 && (
             <div className="mt-4">
               <Label>Links</Label>
-              {p.links.map((l, i) => {
-                const url = typeof l === 'string' ? l : ''
-                if (!url) return null
+              {links.map((l, i) => {
                 // links: come from agent/repo-written files — only allowlisted URL schemes are
                 // clickable (main re-validates); anything else renders inert.
-                let clickable = false
-                try {
-                  clickable = ['http:', 'https:', 'mailto:'].includes(new URL(url).protocol)
-                } catch {
-                  clickable = false
-                }
-                if (!clickable) {
+                if (!isClickableLink(l.url)) {
                   return (
-                    <div key={i} className="block truncate font-mono text-[11px] text-muted" title="not an http(s) link — not clickable">
-                      {url}
+                    <div key={i} className="block truncate font-mono text-[11px] text-muted" title={`${l.url} — not an http(s) link, not clickable`}>
+                      {l.label}
                     </div>
                   )
                 }
                 return (
                   <button
                     key={i}
-                    onClick={() => window.radar.openExternal(url)}
+                    onClick={() => window.radar.openExternal(l.url)}
+                    title={l.url}
                     className="block truncate font-mono text-[11px] text-term-cyan hover:underline"
                   >
-                    {url}
+                    {l.label}
                   </button>
                 )
               })}

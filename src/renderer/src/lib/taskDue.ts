@@ -20,9 +20,13 @@ const DUE_RE = /\(due\s+([^)]+)\)\s*$/i
 /** Minimal shape of a task line for due aggregation (matches `BlipTask`). */
 type DuedTask = { text: string; done: boolean }
 
-/** The task text with any trailing `(due …)` marker stripped, for clean display. */
-export function taskText(text: string): string {
-  return text.replace(DUE_RE, '').trim()
+/**
+ * The task text with a trailing `(due …)` marker stripped, for clean display.
+ * Only a tail chrono actually accepts as a date counts as a marker — a parenthetical
+ * like "(due diligence review)" is part of the task text and is left alone.
+ */
+export function taskText(text: string, ref: Date = new Date()): string {
+  return taskDueDate(text, ref) ? text.replace(DUE_RE, '').trim() : text.trim()
 }
 
 /** Parse a task's `(due …)` marker → local ISO `YYYY-MM-DD`, or null when absent/unparseable. */
@@ -85,7 +89,10 @@ export function drivingTask(
   return best
 }
 
-/** Rewrite a task line's trailing `(due …)` marker — set a new ISO date, or clear it with null. */
+/**
+ * Rewrite a task line's trailing `(due …)` marker — set a new ISO date, or clear it with null.
+ * An unparseable tail is task text, not a marker (see `taskText`), so it survives the rewrite.
+ */
 export function setTaskDue(text: string, iso: string | null): string {
   const base = taskText(text)
   return iso ? `${base} (due ${iso})` : base

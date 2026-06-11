@@ -18,10 +18,13 @@ export function parseDateLocal(s: string): Date {
   return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(s)
 }
 
-/** Whole-day signed distance from today to a date (negative = past). null if no date. */
+/** Whole-day signed distance from today to a date (negative = past). null if no/garbage date. */
 export function daysFromToday(iso: string | undefined, ref: Date = new Date()): number | null {
   if (!iso) return null
-  return dayDiff(ref, parseDateLocal(iso))
+  const d = parseDateLocal(iso)
+  // A hand-edited/hostile non-date ("tomorrow", "asap") must not leak NaN into radar math.
+  if (Number.isNaN(d.getTime())) return null
+  return dayDiff(ref, d)
 }
 
 const TIME_FMT = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })

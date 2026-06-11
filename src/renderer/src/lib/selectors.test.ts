@@ -97,6 +97,16 @@ describe('calendarItemsByDay', () => {
     ])
     expect(items.size).toBe(0)
   })
+
+  it('skips a garbage deadline instead of crashing the calendar', () => {
+    // 'tomorrow' → Invalid Date → dayKey would throw a toISOString RangeError pre-guard.
+    const items = calendarItemsByDay([
+      p({ blipPath: 'bad', name: 'Bad', deadline: 'tomorrow' }),
+      p({ blipPath: 'ok', name: 'Ok', deadline: '2026-07-01' })
+    ])
+    expect(items.size).toBe(1)
+    expect(items.get(dayKey(deadlineDate('2026-07-01')))?.[0]?.blipPath).toBe('ok')
+  })
 })
 
 describe('parseSessionLog + buildLogbook', () => {
@@ -113,6 +123,40 @@ describe('parseSessionLog + buildLogbook', () => {
     expect(entries).toHaveLength(2)
     expect(entries[0]).toMatchObject({ date: '2026-05-20', author: 'Ada' })
     expect(entries[0].lines).toEqual(['did one', 'did two'])
+  })
+
+  it('is lenient about the author tail — en-dash, hyphen, missing, dangling, empty', () => {
+    // The flagship timeline must never silently drop an entry over heading punctuation.
+    const messy = [
+      '## 2026-06-07 – EnDash', // en-dash separator
+      '- a',
+      '## 2026-06-08 - Hyphen', // plain hyphen separator
+      '- b',
+      '## 2026-06-09', // no author at all
+      '- c',
+      '## 2026-06-10 —', // dangling dash, no author
+      '- d',
+      '## 2026-06-11 — ', // empty author (handoff with --author "")
+      '- e',
+      ''
+    ].join('\n')
+    const entries = parseSessionLog(messy)
+    expect(entries.map((e) => [e.date, e.author])).toEqual([
+      ['2026-06-07', 'EnDash'],
+      ['2026-06-08', 'Hyphen'],
+      ['2026-06-09', 'unknown'],
+      ['2026-06-10', 'unknown'],
+      ['2026-06-11', 'unknown']
+    ])
+    expect(entries.map((e) => e.lines)).toEqual([['a'], ['b'], ['c'], ['d'], ['e']])
+  })
+
+  it('keeps multiple same-day entries separate', () => {
+    const twice = '## 2026-06-11 — Ada\n- morning\n\n## 2026-06-11 — Tate\n- evening\n'
+    const entries = parseSessionLog(twice)
+    expect(entries).toHaveLength(2)
+    expect(entries[0]).toMatchObject({ date: '2026-06-11', author: 'Ada', lines: ['morning'] })
+    expect(entries[1]).toMatchObject({ date: '2026-06-11', author: 'Tate', lines: ['evening'] })
   })
 
   it('builds a portfolio feed grouped by day, newest first', () => {

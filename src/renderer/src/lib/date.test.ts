@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { addMonths, buildMonthGrid, dayKey, monthLabel, sameDay } from './date'
+import { addMonths, buildMonthGrid, dayKey, daysFromToday, monthLabel, sameDay } from './date'
+
+describe('daysFromToday', () => {
+  const ref = new Date(2026, 5, 3) // Wed 3 Jun 2026
+
+  it('measures signed whole days on the local calendar', () => {
+    expect(daysFromToday('2026-06-10', ref)).toBe(7)
+    expect(daysFromToday('2026-06-03', ref)).toBe(0)
+    expect(daysFromToday('2026-06-01', ref)).toBe(-2)
+  })
+
+  it('returns null when there is no date', () => {
+    expect(daysFromToday(undefined, ref)).toBeNull()
+  })
+
+  it('returns null (never NaN) for garbage hand-edited/hostile date strings', () => {
+    expect(daysFromToday('tomorrow', ref)).toBeNull()
+    expect(daysFromToday('asap', ref)).toBeNull()
+    expect(daysFromToday('2026-13-45T99:00:00', ref)).toBeNull() // invalid ISO datetime
+  })
+})
 
 describe('buildMonthGrid', () => {
   const ref = new Date(2026, 4, 15) // Fri 15 May 2026

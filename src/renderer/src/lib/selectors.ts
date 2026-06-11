@@ -100,7 +100,11 @@ export function calendarItemsByDay(projects: ProjectRecord[]): Map<string, Calen
     if (p.status === 'archived' || p.ghost) continue
     const meta = { blipPath: p.blipPath, projectName: p.name ?? 'Project', category: p.category, priority: p.priority }
     if (p.deadline) {
-      push(dayKey(deadlineDate(p.deadline)), { ...meta, kind: 'deadline', label: p.name ?? 'Project' })
+      const d = deadlineDate(p.deadline)
+      // A garbage deadline (Invalid Date) would make dayKey → toISOString() throw — skip it.
+      if (!Number.isNaN(d.getTime())) {
+        push(dayKey(d), { ...meta, kind: 'deadline', label: p.name ?? 'Project' })
+      }
     }
     p.tasks.forEach((t, taskIndex) => {
       if (t.done) return
@@ -147,7 +151,11 @@ export interface SessionEntry {
 /** Parse a `# Session log` body into dated entries (newest preserved order). */
 export function parseSessionLog(text: string | undefined): SessionEntry[] {
   if (!text) return []
-  const heads = [...text.matchAll(/^##\s+(\d{4}-\d{2}-\d{2})\s+[—-]\s+(.+?)\s*$/gm)]
+  // Lenient on the author tail: em/en-dash or plain hyphen(s), a missing author, or an empty
+  // one (`--author ""` emits "## DATE — ") all still count — entries must never silently
+  // vanish from the Logbook/heatmap while `last_session` keeps updating. The tail whitespace
+  // is same-line `[ \t]` only, so an author-less heading can't swallow the next `- ` bullet.
+  const heads = [...text.matchAll(/^##\s+(\d{4}-\d{2}-\d{2})(?:[ \t]+[—–-]+[ \t]*(.*?))?[ \t]*$/gm)]
   const out: SessionEntry[] = []
   for (let i = 0; i < heads.length; i++) {
     const h = heads[i]!
@@ -159,7 +167,7 @@ export function parseSessionLog(text: string | undefined): SessionEntry[] {
       .map((l) => l.trim())
       .filter((l) => l.startsWith('- '))
       .map((l) => l.slice(2).trim())
-    out.push({ date: h[1]!, author: h[2]!, lines })
+    out.push({ date: h[1]!, author: h[2]?.trim() || 'unknown', lines })
   }
   return out
 }

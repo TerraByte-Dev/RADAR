@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { BootSplash } from './components/BootSplash'
 import { CommandPalette } from './components/CommandPalette'
 import { CrtOverlay } from './components/CrtOverlay'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Onboarding } from './components/Onboarding'
 import { QuickAdd } from './components/QuickAdd'
 import { Sidebar } from './components/Sidebar'
@@ -52,7 +53,10 @@ export default function App(): JSX.Element {
         {loaded && (
           <>
             <Sidebar />
-            <ActiveView kind={viewKind} />
+            {/* keyed so switching views retries a fresh render after a fault */}
+            <ErrorBoundary key={viewKind}>
+              <ActiveView kind={viewKind} />
+            </ErrorBoundary>
           </>
         )}
       </div>

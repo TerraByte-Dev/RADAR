@@ -83,6 +83,24 @@ function replace(list: ProjectRecord[], rec: ProjectRecord): ProjectRecord[] {
   return next
 }
 
+/**
+ * A legitimately failed write (e.g. post-retry EPERM) — warn, then re-scan so the UI
+ * resyncs to disk truth instead of keeping stale optimism on the next interaction.
+ */
+async function recoverFailedWrite(
+  set: (partial: { projects: ProjectRecord[] }) => void,
+  action: string,
+  blipPath: string,
+  e: unknown
+): Promise<void> {
+  console.warn(`${action} write failed for ${blipPath} — resyncing from disk`, e)
+  try {
+    set({ projects: await window.radar.scan() })
+  } catch {
+    /* the re-scan failed too — keep what we have */
+  }
+}
+
 interface StoreState {
   projects: ProjectRecord[]
   config: RadarConfig | null
@@ -234,18 +252,30 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   async setFields(blipPath, patch) {
-    const rec = await window.radar.setFields(blipPath, patch)
-    set((s) => ({ projects: replace(s.projects, rec) }))
+    try {
+      const rec = await window.radar.setFields(blipPath, patch)
+      set((s) => ({ projects: replace(s.projects, rec) }))
+    } catch (e) {
+      await recoverFailedWrite(set, 'setFields', blipPath, e)
+    }
   },
 
   async taskOp(blipPath, op) {
-    const rec = await window.radar.task(blipPath, op)
-    set((s) => ({ projects: replace(s.projects, rec) }))
+    try {
+      const rec = await window.radar.task(blipPath, op)
+      set((s) => ({ projects: replace(s.projects, rec) }))
+    } catch (e) {
+      await recoverFailedWrite(set, 'taskOp', blipPath, e)
+    }
   },
 
   async handoff(blipPath, lines, next) {
-    const rec = await window.radar.handoff(blipPath, lines, next)
-    set((s) => ({ projects: replace(s.projects, rec) }))
+    try {
+      const rec = await window.radar.handoff(blipPath, lines, next)
+      set((s) => ({ projects: replace(s.projects, rec) }))
+    } catch (e) {
+      await recoverFailedWrite(set, 'handoff', blipPath, e)
+    }
   },
 
   async setRadarAngle(blipPath, angle) {

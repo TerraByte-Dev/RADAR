@@ -20,10 +20,17 @@ const DAY_MS = 86_400_000
 /** Day-distance a fuzzy horizon maps to when a project has no dated driver. */
 export const HORIZON_DAYS: Record<Horizon, number | null> = { today: 0, week: 7, someday: null }
 
+/** null unless finite — a garbage deadline (NaN math) must read as "no dated driver", not a vanished blip. */
+function finiteOrNull(days: number | null): number | null {
+  return days !== null && Number.isFinite(days) ? days : null
+}
+
 /** Fractional days to the explicit hard deadline (datetime → live clock, date → whole days). null = none. */
 function hardDeadlineFracDays(p: ProjectRecord, ref: Date): number | null {
   if (!p.deadline) return null
-  if (p.deadline.includes('T')) return (new Date(p.deadline).getTime() - ref.getTime()) / DAY_MS
+  if (p.deadline.includes('T')) {
+    return finiteOrNull((new Date(p.deadline).getTime() - ref.getTime()) / DAY_MS)
+  }
   return daysFromToday(p.deadline, ref)
 }
 
@@ -51,7 +58,7 @@ function minNullable(a: number | null, b: number | null): number | null {
  * at all (no horizon fallback — this is "does it have a real deadline?").
  */
 export function datedDeadlineDays(p: ProjectRecord, ref: Date = new Date()): number | null {
-  return minNullable(hardDeadlineWholeDays(p, ref), taskDeadlineWholeDays(p, ref))
+  return finiteOrNull(minNullable(hardDeadlineWholeDays(p, ref), taskDeadlineWholeDays(p, ref)))
 }
 
 /** Blip diameter (px) by priority 1..5 — P1 biggest. */
@@ -66,7 +73,7 @@ export function prioSize(priority: number): number {
  * horizon band. null = someday.
  */
 export function daysUntilDeadline(p: ProjectRecord, ref: Date = new Date()): number | null {
-  const eff = minNullable(hardDeadlineFracDays(p, ref), taskDeadlineWholeDays(p, ref))
+  const eff = finiteOrNull(minNullable(hardDeadlineFracDays(p, ref), taskDeadlineWholeDays(p, ref)))
   return eff ?? HORIZON_DAYS[p.horizon]
 }
 
