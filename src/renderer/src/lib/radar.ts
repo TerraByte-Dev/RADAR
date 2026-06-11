@@ -1,26 +1,12 @@
-import type { Task } from '@shared/types'
-import { daysFromToday } from './date'
-
 /**
- * Radar geometry + blip mapping — the pure math behind the RadarView canvas.
- * Adapted from the TerraByte RADAR project and reworked so a blip's distance
- * from center reflects its *actual* deadline on a continuous, log-compressed
- * time scale: dead-center = now, with readable gridline rings at week / month /
- * quarter and an outer SOMEDAY band for undated tasks. Near-term tasks (where
- * precision matters) get most of the radial space; far-future tasks compress
- * toward the rim.
+ * Radar geometry + blip math — the pure, generic math behind the RadarView
+ * canvas. A blip's distance from center reflects its *actual* deadline on a
+ * continuous, log-compressed time scale: dead-center = now, with readable
+ * gridline rings at week / month / quarter and an outer SOMEDAY band for
+ * undated work. Near-term deadlines (where precision matters) get most of the
+ * radial space; the far future compresses toward the rim. The project-model
+ * mapping (ProjectRecord → these primitives) lives in `projectRadar.ts`.
  */
-
-const DAY_MS = 86_400_000
-
-/** Blip radius (px) by priority — P1 biggest, fades down to no-priority. */
-export const PRIO_SIZE: Record<Task['priority'], number> = {
-  P1: 7.6,
-  P2: 6.4,
-  P3: 5.4,
-  P4: 4.6,
-  none: 4.2
-}
 
 /* ── Radial time scale ──────────────────────────────────────────────
    r(d) = R_NOW + R_K·ln(1 + d) for d ≥ 0 days, clamped to R_MAX.
@@ -31,18 +17,6 @@ const R_MAX = 0.9
 export const R_SOMEDAY = 0.97
 /** Dragging a blip past this radius fraction clears its due date (→ someday). */
 const SOMEDAY_DROP = 0.93
-
-/**
- * Continuous time-to-due in (fractional) days. Timed dues use the wall clock
- * (so a task due in 2h sits just off-center and drifts in as it approaches);
- * all-day dues use whole calendar days (so "due today" is 0 regardless of the
- * current time). null = no due date.
- */
-export function daysUntilDue(task: Task, ref: Date = new Date()): number | null {
-  if (!task.due) return null
-  if (task.due.hasTime) return (new Date(task.due.date).getTime() - ref.getTime()) / DAY_MS
-  return daysFromToday(task.due.date, ref)
-}
 
 /** Map days-until-due → radius fraction [0..1]. Monotonic; overdue eases inward. */
 export function radiusFracForDays(days: number | null): number {
@@ -58,11 +32,6 @@ export function daysFromFrac(frac: number): number | null {
   return Math.round(Math.expm1((frac - R_NOW) / R_K))
 }
 
-/** A task's radius fraction on the radar. */
-export function blipRadiusFrac(task: Task, ref: Date = new Date()): number {
-  return radiusFracForDays(daysUntilDue(task, ref))
-}
-
 /** Labeled gridline rings — the readable time axis. `days: null` is the outer SOMEDAY band. */
 export interface TimeRing {
   days: number | null
@@ -76,22 +45,6 @@ export const TIME_RINGS: readonly TimeRing[] = [
   { days: 90, label: '1 QUARTER', color: '#00E5FF' },
   { days: null, label: 'SOMEDAY', color: '#5fd0c4' }
 ]
-
-/** Short human relative-due label for the HUD / drag preview / detail panel. */
-export function relativeDue(task: Task, ref: Date = new Date()): string {
-  const d = daysUntilDue(task, ref)
-  if (d === null) return 'someday'
-  if (task.due?.hasTime && Math.abs(d) < 1) {
-    const h = Math.round(d * 24)
-    if (h === 0) return 'now'
-    return h > 0 ? `in ${h}h` : `${-h}h overdue`
-  }
-  const days = Math.round(d)
-  if (days === 0) return 'today'
-  if (days === 1) return 'tomorrow'
-  if (days === -1) return 'yesterday'
-  return days > 0 ? `in ${days}d` : `${-days}d overdue`
-}
 
 /** Short label for the live drag preview, given a candidate radius fraction. */
 export function dragPreviewLabel(frac: number): string {
@@ -142,16 +95,6 @@ function jitterForId(id: string, maxOffset: number): number {
 export function angleFromPoint(dx: number, dy: number): number {
   if (dx === 0 && dy === 0) return 0
   return mod360((Math.atan2(dx, -dy) * 180) / Math.PI)
-}
-
-/**
- * Radial position used for the *angular* layout only — bucketed to the whole
- * calendar day, unlike `blipRadiusFrac` which tracks the live clock for timed
- * dues. So tasks due the same day in the same project cluster and fan together,
- * and the fan doesn't twitch as a timed blip's drawn radius drifts between frames.
- */
-export function blipLayoutFrac(task: Task, ref: Date = new Date()): number {
-  return radiusFracForDays(task.due ? daysFromToday(task.due.date, ref) : null)
 }
 
 /* ── Crowd-aware angular layout ──────────────────────────────────────
@@ -295,12 +238,6 @@ export function layoutBlipAngles(
     }
   }
   return out
-}
-
-/** Subtask completion ratio (0..1) — drives the progress arc around a blip. */
-export function subtaskRatio(task: Task): number {
-  if (!task.subtasks.length) return 0
-  return task.subtasks.filter((s) => s.completed).length / task.subtasks.length
 }
 
 /** The base angle for the Nth sector of `count` slices. */

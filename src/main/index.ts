@@ -1,9 +1,7 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, session, shell } from 'electron'
 import { join } from 'node:path'
 import { IPC, type UpdateEvent } from '../shared/types'
-import { registerIpcHandlers } from './ipc/handlers'
 import { registerRadarHandlers } from './ipc/radar'
-import { Repository } from './store/repository'
 
 const isDev = !app.isPackaged
 
@@ -127,9 +125,7 @@ function applyProdCsp(): void {
   })
 }
 
-app.whenReady().then(async () => {
-  const repo = await Repository.open()
-  registerIpcHandlers(repo)
+app.whenReady().then(() => {
   registerWindowControls()
   applyProdCsp()
   createWindow()
