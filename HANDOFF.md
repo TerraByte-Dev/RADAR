@@ -1,6 +1,6 @@
 # RADAR — Session Handoff
 
-_Last updated: 2026-06-05. The resume point for a fresh session._
+_Last updated: 2026-06-11. The resume point for a fresh session._
 
 Read alongside **`CLAUDE.md`** (architecture + routing table + conventions), **`docs/DESIGN.md`**
 (TERRABYTE.SYS skin + the full radar spec), **`docs/BLIP-SCHEMA.md`** (the `BLIP.md` schema of
@@ -24,12 +24,16 @@ It evolved from the ToDoPlus task app; the repo is `TerraByte-Dev/ToDoPlus` and 
 
 ## Where things stand
 
-- **Branch `feat/9-radar-pivot` → draft PR #10 (Closes #9). NOT merged to `main`.** All work since
-  the pivot lives here. `main` is the pre-pivot ToDoPlus + the 3 merged polish PRs.
-- **Active sub-branch `feat/settings-themes`** (off `feat/close-the-loop`) holds the **Settings + theme
-  system** (5 commits, awaiting Tate's review — not pushed/merged). `feat/close-the-loop` has the prior
-  close-the-loop / deadlines-on-tasks / titlebar-chrome work (committed).
-- **Gates green:** `npm run typecheck` ✓ · `npm test` **152** (126 app + 26 engine) ✓ · `npm run build` ✓.
+- **The whole pivot is a review stack of draft PRs, none merged.** `main` is still the pre-pivot
+  ToDoPlus + the 3 merged polish PRs. The stack, bottom-up:
+  1. `feat/9-radar-pivot` → **draft PR #10** (Closes #9) — the pivot itself.
+  2. `feat/close-the-loop` → **draft PR #11** (git-seeded adopt, deadlines-on-tasks, title-bar chrome).
+  3. `feat/settings-themes` → **draft PR #12** (theme engine + tabbed Settings).
+  4. `chore/13-ship-v1` → **draft PR #14** (Closes #13) — the ship-v1 cleanup (legacy stack deleted,
+     RADAR rebrand finished, README/DESIGN rewritten, publish-ready engine, dogfood `BLIP.md`).
+  Review top-down or bottom-up, then merge each into its base (merge commits, per convention).
+- **Gates green:** `npm run typecheck` ✓ · `npm test` **140** (114 app + 26 engine — the 12 removed
+  with the legacy stack covered only deleted dead code) ✓ · `npm run build` ✓.
 - **Monorepo (npm workspaces):** `packages/blip-core` = the bulletproof `radar-blip` engine (parse/
   serialize `BLIP.md`, byte-faithful round-trip + atomic writes, CLI, `/blip` skills). App at repo root.
 - **Built so far (P0–P5 + several feedback rounds):** monorepo + vendored engine; `deadline`/
@@ -39,18 +43,25 @@ It evolved from the ToDoPlus task app; the repo is `TerraByte-Dev/ToDoPlus` and 
   removal** (archive/delete/dismiss + Workspace settings); the **BLIP.md boundary** scan; **fleets**;
   the **category compass**; the **interactive NOW center → attention panel** (overdue + neglected);
   **per-task `(due …)`** ship urgency; and a tested **`scheduleForDrop`** so drops land accurately.
-- **This session (2026-06-05) — on `feat/close-the-loop`, uncommitted:**
-  1. **Close the loop:** adopt now seeds honest signal from git (`gitseed.ts` → `initProject`: real
-     `last_session` recency + a first session-log entry from the latest commit); the `/blip` skills
-     (claude + codex) now self-feed (run `handoff` proactively at session end). `radar-blip` was
-     installed globally from the local build (npm package still unpublished — the onboarding's
-     `npm i -g radar-blip` line is still stale and worth fixing).
-  2. **Deadlines live on tasks:** radar distance = the *effective deadline* (soonest of the nearest
-     incomplete task `(due …)` and an optional project-level hard `deadline`); dragging a fleet
-     reschedules its driving milestone; inline per-task due editors in `ProjectDetail` + calendar
-     milestones. See memory `deadlines-live-on-tasks`.
-  3. **Chrome:** CRT toggle + ⚙ Settings moved into the **title bar** (TerraByte signature), removed
-     the sidebar footer.
+- **Session 2026-06-05 (on `feat/close-the-loop`, now PR #11):** close the loop (git-seeded adopt +
+  self-feeding `/blip` skills) · deadlines live on tasks (effective deadline, driving-milestone drag,
+  inline per-task due editors — see memory `deadlines-live-on-tasks`) · CRT + Settings into the title bar.
+- **Session 2026-06-11 — the ship-v1 cleanup (`chore/13-ship-v1`, PR #14, Closes #13):**
+  1. **Legacy stack deleted for real** (it had still been *live* — `Repository.open()` +
+     `registerIpcHandlers()` ran every launch): `repository.ts`, `handlers.ts`, the task IPC channels,
+     `Task`/`Project`/`AppData` types, the task half of `window.api` (`TodoApi` → slim `AppApi`), and
+     the dead Task-typed exports in `lib/{radar,date,palette}.ts` (+ their tests). `Priority`/`DueDate`
+     survive for quick-add. `framer-motion` dropped (zero imports).
+  2. **Rebrand finished:** BootSplash boots RADAR (BIOS lines describe the real subsystems), title-bar
+     version badge reads `app.getVersion()` live, `index.css` header, README fully rewritten for RADAR,
+     `docs/DESIGN.md` staleness table fixed, `CHANGELOG.md` + root `LICENSE` added.
+  3. **Publish-ready engine:** `radar-blip` has `prepublishOnly` (dist/ + skills/ are git-ignored — an
+     unbuilt publish would have shipped an empty tarball silently), `sideEffects: false`, self-contained
+     source maps, a synced README (+ annotated `BLIP.md` example). Root manifest is `private: true`.
+     `npm pack --dry-run` verified clean (33 files). The name is unclaimed on npm.
+  4. **Dogfood:** the repo carries its own engine-written `BLIP.md` (P1 / Product / week + the v1
+     release prereqs as tasks). Run the `/blip` handoff at session end. The documented
+     `npm run blip -- <args>` script now actually exists (it didn't).
 
 ## Run it
 
@@ -60,7 +71,7 @@ npm test             # vitest: app (renderer libs + main store) + engine
 npm run typecheck    # tsc (node + web); build:core runs first
 npm run build        # production bundle (engine bundles into the main process)
 npm run package      # electron-builder (Win NSIS / mac dmg / linux AppImage)
-npm run blip -- <args>   # the radar-blip CLI from source
+npm run blip -- <args>   # the radar-blip CLI from source (PowerShell: npm run blip "--" <args>)
 ```
 
 First run creates the workspace + Inbox at **`~/Documents/RADAR/Inbox/BLIP.md`**; config lives at
@@ -102,10 +113,9 @@ reappearing). **After any main/preload change, fully restart:** close the window
   `lib/taskDue.ts` (`nearestTaskDue`/`drivingTask`/`setTaskDue`). Touch these with tests.
 - The canvas recomputes "now" each frame (live across midnight) and honors `prefers-reduced-motion`.
   Per-task parsing + overdue/neglected derivation run in memoized selectors **off** the rAF loop.
-- **Dormant legacy:** the old task store (`src/main/store/repository.ts`, `src/main/ipc/handlers.ts`,
-  the task half of `TodoApi`, and `Task`/`Project` in `src/shared/types.ts`) is **unused but still
-  compiled** (kept because `lib/nlp.ts` imports `Priority`/`DueDate`). Removing it cleanly is an open
-  cleanup thread — leave it until you do that intentionally.
+- **No legacy left:** the old ToDoPlus task store is fully deleted (PR #14). `shared/types.ts` now
+  holds only `Priority`/`DueDate` (quick-add value types), the IPC channel names, and the slim
+  `AppApi`. `BLIP.md` is the only data model.
 
 ## ✅ Done — robust Settings + theming  (on `feat/settings-themes`; brief in `docs/SETTINGS-HANDOFF.md`)
 
@@ -131,8 +141,13 @@ CRT family are excellent.
 
 ## Next focus — Tate's call
 
-Settings/theming is done and awaiting review. Pick from the **Standing UX backlog** below (visual cohesion
-across the new surfaces is a natural follow-on now that Settings exists), or a new thread.
+**The whole pivot is built, cleaned, and waiting on review.** The highest-leverage move now is not
+more code: review the PR stack (#10 ← #11 ← #12 ← #14), merge it down, then run the v1 release
+prereqs that only Tate can do — **publish `radar-blip` to npm** (guarded by `prepublishOnly`),
+**rename the repo ToDoPlus → RADAR + make it public** (electron-builder `publish.repo` + auto-update
+already point at `TerraByte-Dev/RADAR`; flip `About.tsx`'s repo link after), and **code-signing**
+(`docs/RELEASING.md`). Then dogfood mornings against the real portfolio (memory:
+`radar-spine-dogfood-the-loop`). After that, pick from the **Standing UX backlog** below.
 
 ### Standing UX backlog (after / alongside settings)
 
@@ -164,13 +179,15 @@ Strong candidate threads (pick, reorder, or replace):
 - **Category management.** Categories are free-text today (no picker, color is hashed). A light
   category manager (rename, recolor, the compass legend) would help organization.
 
-Deferred and tracked in PR #10: operations sector-zoom · git-fed heatmap signals · npm publish +
-repo rename + code-signing (release prereqs) · removing the dormant legacy task stack.
+Deferred and tracked in PR #10: operations sector-zoom · git-fed heatmap signals. Release prereqs
+(npm publish · repo rename · code-signing) are now tasks in this repo's own `BLIP.md`.
 
 ## First moves in a fresh session
 
 1. Read `CLAUDE.md` + this file; skim `docs/DESIGN.md` (skin + radar) and `docs/BLIP-SCHEMA.md`.
-2. `git switch feat/9-radar-pivot`; `npm run dev` (confirm the Radar boots) and `npm test` (confirm green).
-3. Adopt a couple of folders / add a workspace root so you have real blips to design against.
-4. Pick a UX/UI thread above, cut a `type/short-desc` branch off `feat/9-radar-pivot` (or work the PR
-   branch directly), and go — tests + docs as you ship. Restart `npm run dev` after any main/preload edit.
+2. `git switch chore/13-ship-v1` (the stack tip); `npm run dev` (confirm the Radar boots) and
+   `npm test` (confirm green, 140).
+3. Check `BLIP.md` at the repo root — it is the live state of this project; keep it current
+   (`/blip` handoff at session end, every write through the engine).
+4. If the stack has merged, branch off `main`; otherwise branch off the stack tip. Tests + docs as
+   you ship. Restart `npm run dev` after any main/preload edit.

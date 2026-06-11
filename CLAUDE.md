@@ -28,9 +28,9 @@ npm workspaces. The bulletproof `BLIP.md` engine is vendored as a package and bu
 | Area | Path | Responsibility |
 |---|---|---|
 | Main process | `src/main/index.ts` | App lifecycle, **frameless** window, window-control IPC, global quick-add hotkey, **auto-update** (packaged only) |
-| BLIP backend | `src/main/store/{projects,config,watch,workspace,selfwrite}.ts` | Scan roots for `BLIP.md` (+ ghost repos), read/write via the engine, chokidar live-watch (self-write-suppressed), config (roots + maxDepth + the app-managed workspace), Inbox blip. **Only code that touches disk.** Unit-tested (`projects.test.ts`, `workspace.test.ts`). |
-| Radar IPC | `src/main/ipc/radar.ts` | Registers `radar:*` channels (scan/read/setFields/task/handoff/init/inbox/config/pickFolder/openPath/reveal/openInEditor) + pushes `radar:projects-changed`. (`ipc/handlers.ts` + `store/repository.ts` are the **dormant** legacy task store — removed in a later cleanup.) |
-| Preload | `src/preload/index.ts` | Exposes typed **`window.radar`** (project model) + `window.api` (window controls, quick-add hotkey, platform). Types in `index.d.ts`. |
+| BLIP backend | `src/main/store/{projects,config,watch,workspace,selfwrite,gitseed}.ts` | Scan roots for `BLIP.md` (+ ghost repos), read/write via the engine, chokidar live-watch (self-write-suppressed), config (roots + maxDepth + the app-managed workspace), Inbox blip, git-seeded adopt. **Only code that touches disk.** Unit-tested (`projects.test.ts`, `workspace.test.ts`, `gitseed.test.ts`). |
+| Radar IPC | `src/main/ipc/radar.ts` | Registers `radar:*` channels (scan/read/setFields/task/handoff/init/inbox/config/pickFolder/openPath/reveal/openInEditor) + pushes `radar:projects-changed`. (The legacy ToDoPlus task store is fully deleted — `BLIP.md` is the only data model.) |
+| Preload | `src/preload/index.ts` | Exposes typed **`window.radar`** (project model) + `window.api` (`AppApi`: window controls, quick-add hotkey, platform, version + updates). Types in `index.d.ts`. |
 | Shared types | `src/shared/radar.ts` | `ProjectRecord`, `RadarConfig`, `BlipFieldPatch`, `RadarApi`, `Horizon`/`BlipStatus` (plain types — **no engine import**, so the renderer never pulls in node-only code). IPC channel names in `src/shared/types.ts`. |
 | Renderer entry | `src/renderer/src/{main,App}.tsx` | `main.tsx` imports brand fonts + CSS; `App.tsx` composes TitleBar + Sidebar + view + dialogs + CRT/Boot/Onboarding overlays. Default `view` is `radar`. |
 | Components | `src/renderer/src/components/` | `Sidebar`, `ProjectDetail`, `QuickAdd`, `CommandPalette`, `ActivityHeatmap`, `Onboarding`, `TitleBar`, `CrtOverlay`, `BootSplash`; **`Settings.tsx`** (tabbed dialog) + **`settings/`** (`primitives`, `registry`, `sections/{Appearance,Radar,Workspace,Keyboard,Data,About}`) |
@@ -50,7 +50,8 @@ npm workspaces. The bulletproof `BLIP.md` engine is vendored as a package and bu
 - **Data flow:** renderer → Zustand action → `window.radar` (preload) → `radar:*` IPC → engine → `BLIP.md` on disk; the watcher pushes `radar:projects-changed` back. The renderer never touches disk. UI prefs → localStorage.
 - **Security:** `contextIsolation: true`, `nodeIntegration: false`, strict prod CSP. Quote paths with spaces; no literal BOM in source/commit messages.
 - **Config files** (`tailwind.config.js`, `postcss.config.js`) are **CommonJS** — no `"type": "module"` in the app `package.json` (the engine package is ESM).
-- **Scripts:** `npm run dev` · `npm test` (app + engine vitest) · `npm run typecheck` · `npm run build` · `npm run build:core` · `npm run package` (electron-builder) · `npm run blip -- <args>` (CLI from source). Release: `docs/RELEASING.md`.
+- **Scripts:** `npm run dev` · `npm test` (app + engine vitest) · `npm run typecheck` · `npm run build` · `npm run build:core` · `npm run package` (electron-builder) · `npm run blip -- <args>` (CLI from source; in PowerShell quote the separator: `npm run blip "--" init --name X`). Release: `docs/RELEASING.md`.
+- **Dogfood:** this repo carries its own `BLIP.md` (RADAR is a blip on its own radar) — run the `/blip` handoff at natural session end, through the engine like any other repo.
 
 ## Goal
 
