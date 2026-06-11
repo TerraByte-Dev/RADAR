@@ -51,7 +51,8 @@ const radar: RadarApi = {
   ignore: (path: string): Promise<RadarConfig> => ipcRenderer.invoke(IPC.radarIgnore, path),
   unignore: (path: string): Promise<RadarConfig> => ipcRenderer.invoke(IPC.radarUnignore, path),
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke(IPC.radarPickFolder),
-  openPath: (path: string): Promise<void> => ipcRenderer.invoke(IPC.radarOpenPath, path),
+  openExternal: (url: string): Promise<{ ok: boolean; reason?: string }> =>
+    ipcRenderer.invoke(IPC.radarOpenExternal, url),
   reveal: (path: string): Promise<void> => ipcRenderer.invoke(IPC.radarReveal, path),
   openInEditor: (path: string): Promise<{ ok: boolean; reason?: string }> =>
     ipcRenderer.invoke(IPC.radarOpenInEditor, path),

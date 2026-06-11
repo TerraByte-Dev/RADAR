@@ -30,7 +30,14 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    // Same allowlist as radar:open-external — never hand a non-web URL to the OS.
+    try {
+      if (['http:', 'https:'].includes(new URL(details.url).protocol)) {
+        shell.openExternal(details.url)
+      }
+    } catch {
+      /* unparseable URL — drop it */
+    }
     return { action: 'deny' }
   })
 

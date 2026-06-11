@@ -323,10 +323,25 @@ export function ProjectDetail({
               {p.links.map((l, i) => {
                 const url = typeof l === 'string' ? l : ''
                 if (!url) return null
+                // links: come from agent/repo-written files — only allowlisted URL schemes are
+                // clickable (main re-validates); anything else renders inert.
+                let clickable = false
+                try {
+                  clickable = ['http:', 'https:', 'mailto:'].includes(new URL(url).protocol)
+                } catch {
+                  clickable = false
+                }
+                if (!clickable) {
+                  return (
+                    <div key={i} className="block truncate font-mono text-[11px] text-muted" title="not an http(s) link — not clickable">
+                      {url}
+                    </div>
+                  )
+                }
                 return (
                   <button
                     key={i}
-                    onClick={() => window.radar.openPath(url)}
+                    onClick={() => window.radar.openExternal(url)}
                     className="block truncate font-mono text-[11px] text-term-cyan hover:underline"
                   >
                     {url}

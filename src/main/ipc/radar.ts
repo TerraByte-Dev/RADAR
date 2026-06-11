@@ -32,14 +32,40 @@ function rewatch(getWindow: () => BrowserWindow | null): void {
   })
 }
 
-/** Best-effort "open in editor" — tries VS Code (`code`), reports failure rather than throwing. */
+/**
+ * Best-effort "open in editor" — tries VS Code (`code`), reports failure rather than throwing.
+ * The command string is constant and the project path travels via `cwd` (an API argument, never
+ * shell-parsed), so a hostile directory name can't inject into the shell.
+ */
 function openInEditor(path: string): Promise<{ ok: boolean; reason?: string }> {
   return new Promise((resolve) => {
-    exec(`code "${path}"`, (err) => {
+    exec('code .', { cwd: path }, (err) => {
       if (!err) resolve({ ok: true })
       else resolve({ ok: false, reason: 'VS Code (`code`) not found on PATH' })
     })
   })
+}
+
+/**
+ * Open a link from a BLIP.md in the OS browser — allowlisted protocols only. `links:` entries
+ * come from files that agents and cloned repos write, so they are untrusted: anything that
+ * isn't http(s)/mailto (file paths, executables, custom protocol handlers) is refused.
+ */
+const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:'])
+async function openExternal(url: string): Promise<{ ok: boolean; reason?: string }> {
+  let protocol: string
+  try {
+    protocol = new URL(url).protocol
+  } catch {
+    return { ok: false, reason: 'not a valid URL' }
+  }
+  if (!EXTERNAL_PROTOCOLS.has(protocol)) return { ok: false, reason: `blocked protocol: ${protocol}` }
+  try {
+    await shell.openExternal(url)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) }
+  }
 }
 
 /**
@@ -96,7 +122,7 @@ export function registerRadarHandlers(getWindow: () => BrowserWindow | null): ()
       : await dialog.showOpenDialog({ properties: ['openDirectory'] })
     return res.canceled || !res.filePaths[0] ? null : res.filePaths[0]
   })
-  ipcMain.handle(IPC.radarOpenPath, (_e, path: string) => void shell.openPath(path))
+  ipcMain.handle(IPC.radarOpenExternal, (_e, url: string) => openExternal(url))
   ipcMain.handle(IPC.radarReveal, (_e, path: string) => shell.showItemInFolder(path))
   ipcMain.handle(IPC.radarOpenInEditor, (_e, path: string) => openInEditor(path))
 

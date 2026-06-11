@@ -33,7 +33,7 @@ export const IPC = {
   radarIgnore: 'radar:ignore',
   radarUnignore: 'radar:unignore',
   radarPickFolder: 'radar:pick-folder',
-  radarOpenPath: 'radar:open-path',
+  radarOpenExternal: 'radar:open-external',
   radarReveal: 'radar:reveal',
   radarOpenInEditor: 'radar:open-in-editor',
   /** Push channel: main → renderer when the watcher sees BLIP.md changes. */

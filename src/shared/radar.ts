@@ -126,7 +126,8 @@ export interface RadarApi {
   unignore(path: string): Promise<RadarConfig>
   /** Native folder picker; returns the chosen absolute path or null. */
   pickFolder(): Promise<string | null>
-  openPath(path: string): Promise<void>
+  /** Open an http(s)/mailto link in the OS browser. Anything else is refused (never executed). */
+  openExternal(url: string): Promise<{ ok: boolean; reason?: string }>
   reveal(path: string): Promise<void>
   openInEditor(path: string): Promise<{ ok: boolean; reason?: string }>
   /** Subscribe to live `BLIP.md` changes (file watcher); returns an unsubscribe fn. */
