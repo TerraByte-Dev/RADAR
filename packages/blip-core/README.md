@@ -31,25 +31,62 @@ Then run `/blip` in any project from your coding agent to capture a handoff. Re-
 ## Commands
 
 ```
-radar-blip init     [--name N] [--horizon today|week|someday] [--priority 1-5] [--category C] [--status S] [--next "…"] [--force]
+radar-blip init     [--name N] [--horizon today|week|someday] [--priority 1-5] [--category C] [--status S] [--next "…"] [--deadline YYYY-MM-DD] [--operation O] [--force]
 radar-blip show     [--json]
-radar-blip set      [--horizon H] [--priority 1-5] [--category C] [--status S] [--next "…"] [--name N] [--tag T …]
+radar-blip set      [--horizon H] [--priority 1-5] [--category C] [--status S] [--next "…"] [--deadline YYYY-MM-DD] [--operation O] [--name N] [--tag T …]
 radar-blip task     add "text" | done|undone|toggle|rm <n|text> | list
-radar-blip handoff  --line "did X" --line "did Y" --next "next action" [--author A]
+radar-blip handoff  --line "did X" --line "did Y" --next "next action" [--summary "…"] [--author A]
 radar-blip skills install [--claude] [--codex] [--force]
 ```
 
 Every command operates on `./BLIP.md` by default; target another folder with `--path "DIR"`.
-With no `--author`, `handoff` stamps the session log with your OS username.
+With no `--author`, `handoff` stamps the session log with your OS username; `--summary` is an
+extra bullet appended after the `--line`s. Flags are space-separated (`--flag value`, quoted if
+multi-word) — `--flag=value` is not supported, and a value may not itself start with `--`.
+
+## What a BLIP.md looks like
+
+```markdown
+---
+name: RADAR
+horizon: week          # fuzzy distance fallback: today | week | someday
+priority: 1            # 1 (top) … 5 — blip size
+category: Product      # color + sector on the radar
+status: active         # active | paused | blocked | shipped | archived
+next_action: Review the settings branch, then land the pivot PR
+created: 2026-06-01
+last_session: 2026-06-11
+tags: [terrabyte, tooling]
+---
+
+# Tasks
+
+- [ ] Publish radar-blip to npm (due 2026-06-20)
+- [x] Delete the legacy task stack
+
+# Session log
+
+## 2026-06-11 — Tate + Claude
+- Adopted the repo onto its own radar.
+
+# Notes
+
+Anything here is yours — tooling round-trips it byte-for-byte.
+```
+
+A task may carry a trailing `(due …)` marker — the RADAR app parses it (any chrono-readable
+date) and lets **the soonest incomplete task's due date drive the blip's distance from center**.
+An optional frontmatter `deadline:` is the project-level hard date for task-less blips.
 
 ## The BLIP.md guarantee
 
-`radar-blip` owns a known frontmatter subset (`name, horizon, priority, category, status,
-next_action, created, last_session, tags`), the `# Tasks` checklist, and the append-only
-`# Session log`. **`# Notes`, any other heading, and any unknown frontmatter key are
-round-tripped verbatim.** Writes are atomic (temp file + rename), and a file that fails to
-parse is never overwritten. Never hand-edit a `BLIP.md` — go through `radar-blip` (or the app,
-or `/blip`); they share this one engine, so they can't disagree.
+`radar-blip` owns a known frontmatter subset (`name, horizon, deadline, priority, category,
+status, operation, next_action, radar_angle, created, last_session, tags, links`), the
+`# Tasks` checklist, and the append-only `# Session log`. **`# Notes`, any other heading, and
+any unknown frontmatter key are round-tripped verbatim.** Writes are atomic (temp file +
+rename), and a file that fails to parse is never overwritten. Never hand-edit a `BLIP.md` — go
+through `radar-blip` (or the app, or `/blip`); they share this one engine, so they can't
+disagree.
 
 ## Use as a library
 
@@ -60,6 +97,10 @@ const blip = await readBlip('BLIP.md');
 blip.setHorizon('today').addTask('Ship it');
 await writeBlipAtomic('BLIP.md', blip);
 ```
+
+Also exported: `detectAuthor`, `Blip.toReadModel()`, the `HORIZONS`/`STATUSES` enums, and the
+types `BlipReadModel`, `SessionEntry`, `CreateBlipOptions`. The package is ESM-only
+(`"type": "module"`); `require('radar-blip')` needs Node ≥ 20.19 / 22.12.
 
 ## License
 

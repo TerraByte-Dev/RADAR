@@ -27,11 +27,13 @@
   "bugs": "https://github.com/TerraByte-Dev/RADAR/issues",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
     "radar-blip": "./dist/cli.js"
@@ -47,7 +49,8 @@
     "build": "tsc -p tsconfig.json && node scripts/copy-skills.mjs",
     "test": "npm run build && vitest run",
     "test:watch": "vitest",
-    "blip": "tsx src/cli.ts"
+    "blip": "tsx src/cli.ts",
+    "prepublishOnly": "npm test"
   },
   "dependencies": {
     "yaml": "^2.5.0"

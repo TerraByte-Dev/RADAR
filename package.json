@@ -5,6 +5,7 @@
   "main": "./out/main/index.js",
   "author": "TerraByte-Dev",
   "license": "MIT",
+  "private": true,
   "workspaces": [
     "packages/*"
   ],
@@ -18,7 +19,8 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run build:core && npm run typecheck:node && npm run typecheck:web",
     "test": "npm run build:core && vitest run && vitest run --root packages/blip-core",
-    "test:core": "npm run build:core && vitest run --root packages/blip-core"
+    "test:core": "npm run build:core && vitest run --root packages/blip-core",
+    "blip": "tsx packages/blip-core/src/cli.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.7",
