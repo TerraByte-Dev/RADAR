@@ -4,9 +4,10 @@ horizon: week
 priority: 1
 category: Product
 status: active
-next_action: "Review the stacked PRs, then land the radar pivot PR #10"
+next_action: "Review the stacked PRs (#11, #12, #14), then land the radar pivot PR #10"
 operation: TerraByte
 created: 2026-06-11
+last_session: 2026-06-11T07:05:20.875Z
 ---
 
 # Tasks
@@ -19,6 +20,11 @@ created: 2026-06-11
 
 # Session log
 <!-- Append-only. `radar-blip handoff` adds a dated entry; prior entries are never rewritten. -->
+
+## 2026-06-11 — Tate + Claude
+- Ship-v1 cleanup shipped as draft PR #14 (Closes #13): legacy ToDoPlus stack deleted, RADAR rebrand finished, README/DESIGN/CHANGELOG rewritten, radar-blip publish-ready
+- Adopted this repo onto its own radar (this file); full review stack pushed as PRs #10-#14
+- Adversarial review caught a rename blocker: a private TerraByte-Dev/RADAR prototype repo already holds the name (sequencing in docs/RELEASING.md)
 
 # Notes
 <!-- Human-only. Tooling never rewrites this section. -->
