@@ -13,8 +13,8 @@ last_session: 2026-06-11T16:34:30.227Z
 # Tasks
 <!-- RADAR-owned checklist. Edited by the app and `radar-blip task ...`. -->
 - [ ] Review the stacked PRs: close-the-loop #11, settings-themes #12, ship-v1 cleanup
-- [ ] Free the RADAR repo name: rename or delete the private TerraByte-Dev/RADAR prototype
-- [ ] Rename ToDoPlus to RADAR while the repo is still private (update git remote + publish.repo)
+- [x] Free the RADAR repo name: rename or delete the private TerraByte-Dev/RADAR prototype
+- [x] Rename ToDoPlus to RADAR while the repo is still private (update git remote + publish.repo)
 - [ ] Publish radar-blip to npm BEFORE the repo goes public (unclaimed name + the skills' npx -y fallback = squat risk; docs/RELEASING.md)
 - [ ] Merge the stack into PR #10, then PR #10 into main - main must be the real product before going public
 - [ ] Make the repo public, then flip the About repo link

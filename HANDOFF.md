@@ -18,8 +18,8 @@ Local-first, offline, no account — you own your state as Markdown.
 **Four invariants (never violate):** name = RADAR / unit = blip · AI-fed never micromanaged ·
 universal (errand → deadline → project → operation) · local-first plain files you own.
 
-It evolved from the ToDoPlus task app; the repo is `TerraByte-Dev/ToDoPlus` and will be renamed
-**RADAR** at release.
+It evolved from the ToDoPlus task app and the repo is now **`TerraByte-Dev/RADAR`** (renamed
+2026-06-12; the superseded `RADAR` prototype was moved to `RADAR-prototype`).
 
 ## Where things stand
 
@@ -157,11 +157,11 @@ CRT family are excellent.
 ## Next focus — Tate's call
 
 **The whole pivot is built, cleaned, and waiting on review.** The highest-leverage move now is not
-more code: review the PR stack (#10 ← #11 ← #12 ← #14), merge it down, then run the v1 release
+more code: review the PR stack (#10 ← #11 ← #12 ← #14 ← #16), merge it down, then run the v1 release
 prereqs that only Tate can do — **publish `radar-blip` to npm** (guarded by `prepublishOnly`),
-**rename the repo ToDoPlus → RADAR + make it public** (electron-builder `publish.repo` + auto-update
-already point at `TerraByte-Dev/RADAR`; flip `About.tsx`'s repo link after), and **code-signing**
-(`docs/RELEASING.md`). Then dogfood mornings against the real portfolio (memory:
+**make the repo public** (the ToDoPlus → RADAR rename is done; `About.tsx` + the GitHub description
+now say RADAR), and **code-signing** (`docs/RELEASING.md`). Then dogfood mornings against the real
+portfolio (memory:
 `radar-spine-dogfood-the-loop`). After that, pick from the **Standing UX backlog** below.
 
 ### Standing UX backlog (after / alongside settings)

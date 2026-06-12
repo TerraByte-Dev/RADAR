@@ -13,7 +13,7 @@ type Status =
   | 'error'
   | 'dev-mode'
 
-const REPO = 'https://github.com/TerraByte-Dev/ToDoPlus'
+const REPO = 'https://github.com/TerraByte-Dev/RADAR'
 
 function StatusLine({
   status,

@@ -9,9 +9,9 @@ that project's task checklist + session log. Wears the **TERRABYTE.SYS** Y2K ter
 phosphor-green skin. Electron + React + TypeScript, **local-first, offline, no account** — you own
 your state as Markdown files.
 
-> Evolved from the ToDoPlus task app (see `docs/RADAR-PIVOT.md`). The repo is being renamed
-> ToDoPlus → RADAR. Four invariants: **name = RADAR / unit = blip · AI-fed never micromanaged ·
-> universal · local-first plain files you own.**
+> Evolved from the ToDoPlus task app (see `docs/RADAR-PIVOT.md`); the repo was renamed
+> ToDoPlus → **RADAR** (2026-06-12). Four invariants: **name = RADAR / unit = blip · AI-fed never
+> micromanaged · universal · local-first plain files you own.**
 
 ## Monorepo
 
