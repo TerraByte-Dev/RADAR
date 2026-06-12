@@ -1,45 +1,61 @@
 # Identity
 
-**ToDoPlus** — a local-only desktop to-do app with Todoist-style natural-language capture,
-full keyboard control, projects, priorities, subtasks, notes, an activity timeline, and a
-calendar. Wears the **TERRABYTE.SYS** skin: a Y2K terminal / CRT phosphor-green aesthetic
-shared across TerraByte apps (see `TerraPlayer`, `terrabyte-site`). Electron + React +
-TypeScript, offline, no account.
+**RADAR** — TerraByte's personal **project radar**. Every project you're working on is a **blip**
+on a radar screen, fed by a plain-text **`BLIP.md`** in that project's root which your AI coding
+agent keeps current via the **`/blip`** command. The loop: *agent writes state → plain file in your
+repo → the desktop radar visualizes it, live*. Distance = deadline (continuous) or fuzzy horizon,
+size = priority, color = category, angle = category sector (drag-pinnable). Opening a blip reveals
+that project's task checklist + session log. Wears the **TERRABYTE.SYS** Y2K terminal / CRT
+phosphor-green skin. Electron + React + TypeScript, **local-first, offline, no account** — you own
+your state as Markdown files.
 
-## Routing Table
+> Repo: **`TerraByte-Dev/RADAR`**. Four invariants: **name = RADAR / unit = blip · AI-fed never
+> micromanaged · universal · local-first plain files you own.**
+
+## Monorepo
+
+npm workspaces. The bulletproof `BLIP.md` engine is vendored as a package and bundled into the app.
+
+| Package | Path | Responsibility |
+|---|---|---|
+| **Engine** (`radar-blip`) | `packages/blip-core/` | Parse/merge/serialize `BLIP.md` with a **byte-faithful round-trip + atomic write** guarantee, the `radar-blip` CLI bin, and `skills install`. ESM (NodeNext). `npm run build:core` compiles it to `dist/` (bundled into the Electron main process via `externalizeDepsPlugin({ exclude: ['radar-blip'] })`). Schema of record: `docs/BLIP-SCHEMA.md`. |
+| **Skills** | `skills/{claude/blip/SKILL.md,codex/blip.md}` | The `/blip` skills (single source of truth); `copy-skills.mjs` bundles them into the package at build. |
+| **App** | repo root (`src/**`) | The RADAR desktop app. |
+
+## Routing Table (app)
 
 | Area | Path | Responsibility |
 |---|---|---|
-| Main process | `src/main/index.ts` | App lifecycle, **frameless** BrowserWindow, window-control IPC, global quick-add hotkey |
-| IPC | `src/main/ipc/handlers.ts` | Bridges data channels to the repository (window controls live in `index.ts`) |
-| Persistence | `src/main/store/repository.ts` | Local JSON document, atomic writes (only code that touches disk) |
-| Preload | `src/preload/index.ts` | Exposes typed `window.api` (incl. `platform` + window controls); types in `index.d.ts` |
-| Shared types | `src/shared/types.ts` | Domain types (`Task`, `Project`, `Priority`) + `IPC` channel names + `TodoApi` |
-| Renderer entry | `src/renderer/src/{main,App}.tsx` | `main.tsx` imports brand fonts + CSS; `App.tsx` composes TitleBar + Sidebar + view + dialogs + CRT/Boot overlays |
-| Components | `src/renderer/src/components/` | `Sidebar`, `TaskRow`, `TaskDetail`, `QuickAdd`, `CommandPalette`, `TaskContextMenu`, `ProjectContextMenu`, `PriorityFlag`, `TagChip`, `TitleBar`, `CrtOverlay`, `BootSplash` |
-| Views | `src/renderer/src/views/` | `RadarView` (canvas radar — the default view), `TaskListView` (Today/Inbox/Completed/Project), `CalendarView` (month grid + day panel), `LogbookView` (activity feed) |
-| State | `src/renderer/src/store/useStore.ts` | Zustand store: data + UI state + radar/calendar nav + prefs (`crtEffects`, `showCompleted`, persisted to localStorage) + all mutations. Default `view` is `radar`. |
-| Logic | `src/renderer/src/lib/` | `nlp.ts` (quick-add parser), `date.ts` (+ calendar grid), `radar.ts` (blip horizon/angle math), `selectors.ts` (views, completion, calendar, radar), `palette.ts`, `useKeyboard.ts` |
-| Theme | `src/renderer/src/styles/index.css` + `tailwind.config.js` | TERRABYTE.SYS phosphor tokens + CRT design-system layer (see `docs/DESIGN.md`) |
+| Main process | `src/main/index.ts` | App lifecycle, **frameless** window, window-control IPC, global quick-add hotkey, **auto-update** (packaged only) |
+| BLIP backend | `src/main/store/{projects,config,watch,workspace,selfwrite,gitseed}.ts` | Scan roots for `BLIP.md` (+ ghost repos); **all writes via the engine's `updateBlip`** (optimistic concurrency — an agent CLI write mid-edit is replayed-over, never clobbered); chokidar live-watch with **content-hash self-write echo detection** (sha256 of written bytes, consumed on match — an agent write seconds after an app write is never swallowed); scan pushes are generation-guarded (stale overlapping scans dropped); config (roots + maxDepth + the app-managed workspace), Inbox blip (TOCTOU-safe), git-seeded adopt (repo-config exec neutralized: `-c core.fsmonitor=` etc.). **Only code that touches disk.** Unit-tested (`projects`, `workspace`, `gitseed`, `selfwrite`, `watch` `.test.ts`). |
+| Radar IPC | `src/main/ipc/radar.ts` + `guard.ts` | Registers `radar:*` channels (scan/read/setFields/task/handoff/init/inbox/config/pickFolder/openExternal/reveal/openInEditor) + pushes `radar:projects-changed`. **Every mutating channel validates its path** (`guard.ts`, unit-tested): basename must be `BLIP.md` and resolve under a configured root. `openExternal` allowlists http(s)/mailto (BLIP.md `links:` are untrusted); the editor launch never shell-parses a path. (The legacy task store is fully deleted — `BLIP.md` is the only data model.) |
+| Preload | `src/preload/index.ts` | Exposes typed **`window.radar`** (project model) + `window.api` (`AppApi`: window controls, quick-add hotkey, platform, version + updates). Types in `index.d.ts`. |
+| Shared types | `src/shared/radar.ts` | `ProjectRecord`, `RadarConfig`, `BlipFieldPatch`, `RadarApi`, `Horizon`/`BlipStatus` (plain types — **no engine import**, so the renderer never pulls in node-only code). IPC channel names in `src/shared/types.ts`. |
+| Renderer entry | `src/renderer/src/{main,App}.tsx` | `main.tsx` imports brand fonts + CSS; `App.tsx` composes TitleBar + Sidebar + view + dialogs + CRT/Boot/Onboarding overlays. Default `view` is `radar`. |
+| Components | `src/renderer/src/components/` | `Sidebar`, `ProjectDetail`, `QuickAdd`, `CommandPalette`, `ActivityHeatmap`, `Onboarding`, `TitleBar`, `CrtOverlay`, `BootSplash`, `ErrorBoundary` (wraps the view area — one bad record can't white-screen the app); **`Settings.tsx`** (tabbed dialog) + **`settings/`** (`primitives`, `registry`, `sections/{Appearance,Radar,Workspace,Keyboard,Data,About}`) |
+| Views | `src/renderer/src/views/` | `RadarView` (canvas project radar — default), `ProjectListView` (Due Soon / Neglected / Inbox / All), `CalendarView` (deadlines), `LogbookView` (heatmap + cross-project session feed) |
+| State | `src/renderer/src/store/useStore.ts` | Zustand: `projects` from `window.radar.scan()` + live `onProjectsChanged`; UI/nav state; prefs (`showCompleted`, `neglectedDays`, `onboarded`, localStorage; `crtEffects` is a **synced mirror** of the theme engine); mutations (`setFields`/`taskOp`/`handoff`/`setRadarAngle`/`capture`/`adopt*`). |
+| Logic | `src/renderer/src/lib/` | `radar.ts` (generic continuous time-scale math, unit-tested), `projectRadar.ts` (project→radar mapping), `taskDue.ts` (per-task `(due …)` parsing + urgency), `selectors.ts` (views/calendar/logbook/heatmap/neglected), `nlp.ts` (quick-add parser), `links.ts` (untrusted `links:` normalization + scheme allowlist), `date.ts`, `palette.ts`, `useKeyboard.ts`; **theming**: `theme.ts` (registry + `applyTheme`/`resolveCrtOff`/`themeBoot`, unit-tested), `useTheme.ts`, `radarColors.ts` (canvas CSS-var reader), `textMatch.ts` + `settingsSchema.ts` (settings search/export, unit-tested) |
+| Theme | `src/renderer/src/styles/index.css` + `tailwind.config.js` + `lib/theme.ts` | **CSS-variable theme system**: Tailwind tokens map onto `rgb(var(--…-rgb) / <alpha-value>)`; `:root` + `[data-theme]` blocks recolor everything; CRT family + clean Dark/Light; `html.crt-off` gates the overlay; the canvas reads vars at runtime. Full reference in `docs/DESIGN.md` (Themes). |
 
 ## Stack & Conventions
 
-- **Build:** electron-vite (main/preload/renderer split, HMR). `npm run dev` to develop. Editing `src/main/**` or `src/preload/**` requires the dev server to restart the Electron main process.
-- **UI:** React 18 + TS, Tailwind (theme tokens in `tailwind.config.js`), Framer Motion, Radix UI (menus/dialogs), cmdk (palette), lucide-react (icons).
-- **Fonts:** bundled offline via `@fontsource` — VT323 (display), Share Tech Mono (LCD), IBM Plex Mono (UI/labels). Imported in `main.tsx` so the strict prod CSP stays satisfied. Inter is the `sans` token's body font but is left to the system fallback (UI is all-mono).
-- **Aesthetic:** phosphor-green (`#00FF88`) on black; existing semantic tokens (`bg`/`surface`/`ink`/`accent`/`p1`–`p4`) are **remapped** onto the phosphor palette so legacy utilities render on-brand. New tokens: `phosphor.*`, `term.*`, `panel`, `lcd`, `rule`. CRT effects (scanlines/vignette/flicker) are a toggleable overlay (`CrtOverlay`, pref `crtEffects`).
-- **Radar:** the flagship view (ported from the TerraByte `RADAR` project, adapted from project-blips to task-blips). A `<canvas>` + rAF loop in `RadarView.tsx`; pure math in `lib/radar.ts` (unit-tested). Distance from center is a **continuous, log-compressed time-to-deadline** (`daysUntilDue` → `radiusFracForDays`): dead-center = now, with labeled gridline rings (NOW · 1 WEEK · 1 MONTH · 1 QUARTER) and an outer SOMEDAY band; timed dues use fractional days, overdue eases into the bullseye. Angle defaults to the **project sector** but is freely draggable — dropping a blip pins a per-task `radarAngle` (visual only; **does not** change the project), and same-project/same-deadline blips **auto-fan** (`layoutBlipAngles`) so they don't stack on one spoke, fanning *around* any pinned blips (treated as fixed obstacles via slot-based placement). Size = priority, color = project color (red if overdue). Dragging reschedules by radius (radius → inverse `daysFromFrac`) **only when the drop changes day-bucket** — so a pure angular nudge, even on a timed task, never shifts the deadline or pollutes the activity timeline — and pins the angle (`angleFromPoint`), with a live date preview; a near-center drop (`MIN_PIN_PX`) un-pins instead. Clustering keys on `blipLayoutFrac` (whole-day buckets, twitch-free); the layout is cached on a data signature and recomputed live only during a drag (dragged blip = live obstacle for smooth hand-off). Clear a pinned angle via right-click on the blip (secondary button only resets), the selected-panel "reset position", the header "reset layout", or the command palette.
-- **Nav:** sidebar "Views" is intentionally trimmed to **Radar · Today · Calendar · Logbook**. Inbox/Snoozed/Completed are reachable via the command palette (`⌘/Ctrl+K`). **Today merges the old Today + Upcoming** — every dated task, with future-dated ones rendered faded under a "▾ horizon" divider (see `tasksForView`/`TaskListView`).
-- **Completion UX:** completed tasks stay struck-through **in place** (checklist-style), sunk to the bottom of their list; `showCompleted` collapses them. In Today only tasks completed *today* linger (no pile-up); Inbox/Project keep the full checklist. They also remain in the Completed view + Logbook. See `tasksForView` in `selectors.ts`.
-- **NLP:** chrono-node + a small tokenizer in `lib/nlp.ts` (`p1`–`p4`/`!n`, `#project`, `@tag`). Pure & unit-tested (`nlp.test.ts`).
-- **Data flow:** renderer → Zustand action → `window.api` (preload) → IPC → `Repository`. The renderer never touches disk. UI prefs persist to localStorage, not the data file.
-- **Config files** (`tailwind.config.js`, `postcss.config.js`) are **CommonJS** — no `"type": "module"` in package.json.
-- **Scripts:** `npm run dev` · `npm test` (vitest) · `npm run typecheck` · `npm run build` · `npm run package` (electron-builder, Windows NSIS).
+- **Build:** electron-vite. **Always `npm run build:core` first** (the scripts `dev`/`build`/`package`/`test`/`typecheck` do this) so the engine `dist/` + types resolve. Editing `src/main/**` or `src/preload/**` requires a **full `npm run dev` restart** — new IPC channels don't hot-register (renderer-only changes hot-reload fine).
+- **Golden rule:** **never hand-edit a `BLIP.md`** — every write goes through the engine (atomic, round-trip-clean, never clobbers `# Notes` or unknown keys). A file that fails to parse becomes a "signal lost" blip and is never overwritten.
+- **Radar:** `<canvas>` + rAF loop in `RadarView.tsx`. **Deadlines live on tasks:** distance = continuous log-compressed days to the project's *effective* deadline — the **soonest of** its nearest incomplete task `(due …)` and an optional project-level hard `deadline` (`datedDeadlineDays`/`daysUntilDeadline` → `radiusFracForDays`) — falling back to the horizon band when there's no dated driver; rings NOW · 1 WEEK · 1 MONTH · 1 QUARTER + SOMEDAY. Angle = **category sector** (drawn as a faint labeled wedge "compass"), drag-pinned to a per-project `radar_angle` (visual only); same-sector/same-day blips **auto-fan** (`layoutBlipAngles`, around pinned obstacles). A project with tasks is a **fleet** (hollow ring + one ship-marker per open task; ships tint by each task's `(due …)` urgency via `lib/taskDue.ts`); no tasks → a solid blip. The **NOW center** is interactive via a DOM hit-target over the bullseye (no canvas/blip fight): pulses red (overdue) / amber (neglected) with a count, click expands the **attention panel** (overdue projects + tasks + neglected). Drag **reschedules the driving milestone** (the nearest dated task, via `drivingTask`+`setTaskDue`) for a fleet, or sets the project `deadline` for a task-less blip — only when the drop changes day-bucket (someday band clears the date; `scheduleForDrop` pins `horizon: someday` for task-less blips). Right-click a blip (menu) or empty space (add/capture). Status visuals: blocked pulses, shipped dims, archived hidden, signal-lost dashed ring, **ghost** = faint dashed ring. Per-task parsing + overdue derivation run in memos off the rAF loop; layout cached on a data signature. Honors `prefers-reduced-motion`.
+- **Universal capture:** the app-managed **Inbox `BLIP.md`** (in `<workspace>/Inbox/`). NLP quick-add (`#project` routes to that repo, else → Inbox) writes through the engine — the app is just another agent writing a plain file.
+- **Ghost blips:** scan surfaces repos with `.git`/`CLAUDE.md`/`AGENTS.md` but no `BLIP.md`; one-click **Adopt** writes a fresh `BLIP.md`. Read anything; only ever *write* `BLIP.md`.
+- **NLP:** chrono-node + a small tokenizer in `lib/nlp.ts` (`p1`–`p4`/`!n`, `#project`, `@tag`). Pure & unit-tested.
+- **Data flow:** renderer → Zustand action → `window.radar` (preload) → `radar:*` IPC → engine → `BLIP.md` on disk; the watcher pushes `radar:projects-changed` back. The renderer never touches disk. UI prefs → localStorage.
+- **Security:** `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, strict prod CSP, navigation blocked, single-instance lock. **BLIP.md content is untrusted input** (agents + cloned repos write it): links are scheme-allowlisted, IPC paths validated, no shell-string interpolation anywhere (`.github/SECURITY.md`). Quote paths with spaces; no literal BOM in source/commit messages.
+- **Config files** (`tailwind.config.js`, `postcss.config.js`) are **CommonJS** — no `"type": "module"` in the app `package.json` (the engine package is ESM).
+- **Scripts:** `npm run dev` · `npm test` (app + engine vitest) · `npm run typecheck` · `npm run build` · `npm run build:core` · `npm run package` (electron-builder) · `npm run blip -- <args>` (CLI from source; in PowerShell quote the separator: `npm run blip "--" init --name X`). Release: `docs/RELEASING.md`.
+- **Dogfood:** this repo carries its own `BLIP.md` (RADAR is a blip on its own radar) — run the `/blip` handoff at natural session end, through the engine like any other repo.
 
 ## Goal
 
-The single best local-only to-do app: right-click context menus, projects, P1–P4 priorities,
-subtasks, notes, an activity timeline (the flagship feature), natural-language quick-add, a
-calendar with drag-to-reschedule, and full keyboard control — all wearing the TerraByte
-brand. Researched against Todoist (NLP capture), Things 3 (keyboard-first UX), and
-TickTick (breadth). Habits/Pomodoro remain deferred.
+The single best local-first **project** radar: a bird's-eye view of everything you're building,
+fed automatically by your AI agent (never micromanaged), owned as plain Markdown. Deadlines ×
+fuzzy horizons, ghost-blip zero-setup adoption, a neglected-projects safety net, status visuals,
+a session-log timeline + GitHub-style activity heatmap, NLP capture, and full keyboard control —
+all wearing the TerraByte brand. **Deferred:** operations/sector zoom; git-fed heatmap signals.

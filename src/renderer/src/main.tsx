@@ -11,6 +11,10 @@ import '@fontsource/ibm-plex-mono/500.css'
 import '@fontsource/ibm-plex-mono/600.css'
 import App from './App'
 import './styles/index.css'
+import { themeBoot } from './lib/theme'
+
+// Apply the stored theme + CRT class to <html> before React paints — no flash of the default skin.
+themeBoot()
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>

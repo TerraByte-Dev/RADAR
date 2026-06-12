@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Minus, Square, X } from 'lucide-react'
-import { isSnoozed } from '../lib/selectors'
+import { Minus, Monitor, Settings as SettingsIcon, Square, X } from 'lucide-react'
 import { useStore } from '../store/useStore'
+import { useThemeState } from '../lib/useTheme'
+import { themeSupportsCrt } from '../lib/theme'
+import { Settings } from './Settings'
 
 function formatClock(d: Date): string {
   const p = (n: number): string => String(n).padStart(2, '0')
@@ -10,30 +12,47 @@ function formatClock(d: Date): string {
   )}:${p(d.getSeconds())}`
 }
 
-/** Frameless-window title bar — brand logotype, live clock, and window controls. */
+/** Frameless-window title bar — brand logotype, live clock, CRT + settings, and window controls. */
 export function TitleBar(): JSX.Element {
-  const tasks = useStore((s) => s.tasks)
+  const projects = useStore((s) => s.projects)
+  const crt = useStore((s) => s.crtEffects)
+  const { toggleCrt } = useStore.getState()
+  const { themeId } = useThemeState()
+  const crtTheme = themeSupportsCrt(themeId)
   const [clock, setClock] = useState(() => formatClock(new Date()))
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [version, setVersion] = useState('')
 
   useEffect(() => {
     const id = window.setInterval(() => setClock(formatClock(new Date())), 1000)
     return () => window.clearInterval(id)
   }, [])
 
-  // Actionable open tasks — mirrors the action views (excludes snoozed).
-  const open = tasks.filter((t) => !t.completed && !isSnoozed(t)).length
+  useEffect(() => {
+    let alive = true
+    window.api
+      .getAppVersion()
+      .then((v) => alive && setVersion(v))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Active projects on the radar (excludes archived).
+  const open = projects.filter((p) => p.status !== 'archived').length
 
   return (
     <div
-      className="drag-region relative z-[2] flex h-7 shrink-0 select-none items-center border-b border-rule bg-black px-3"
+      className="drag-region relative z-[2] flex h-7 shrink-0 select-none items-center border-b border-rule bg-bg px-3"
     >
       {/* Blinking diamond LED */}
       <span
         className="mr-2 inline-block h-[6px] w-[6px] shrink-0 bg-phosphor"
-        style={{ transform: 'rotate(45deg)', boxShadow: '0 0 6px #00FF88', animation: 'term-blink 2s steps(2) infinite' }}
+        style={{ transform: 'rotate(45deg)', boxShadow: '0 0 6px var(--phosphor)', animation: 'term-blink 2s steps(2) infinite' }}
       />
       <span className="phosphor-glow font-term text-[13px] tracking-[1.5px] text-phosphor">
-        TODOPLUS//SYS
+        RADAR//SYS
       </span>
       <span className="mx-2 font-term text-[13px] text-faint">—</span>
       <span className="font-term text-[13px] tracking-[1px] text-term-cyan">{clock}</span>
@@ -42,8 +61,48 @@ export function TitleBar(): JSX.Element {
 
       <div className="no-drag flex items-center gap-3">
         <span className="hidden font-mono text-[10px] uppercase tracking-[0.12em] text-term-amber sm:inline">
-          ● {open} OPEN
+          ● {open} PROJECTS
         </span>
+        {version && (
+          <span className="hidden font-mono text-[9px] uppercase tracking-[0.12em] text-faint/70 sm:inline">
+            v{version}
+          </span>
+        )}
+
+        {/* CRT + settings — signature top-bar cluster (was the sidebar footer) */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleCrt}
+            disabled={!crtTheme}
+            title={
+              !crtTheme
+                ? 'CRT off on clean themes — switch to a CRT theme in Settings'
+                : crt
+                  ? 'CRT effects on — click to disable'
+                  : 'CRT effects off — click to enable'
+            }
+            aria-label="Toggle CRT effects"
+            aria-pressed={crt}
+            className={`transition-colors ${
+              !crtTheme
+                ? 'cursor-default text-faint/40'
+                : crt
+                  ? 'text-phosphor'
+                  : 'text-faint hover:text-phosphor'
+            }`}
+          >
+            <Monitor size={13} />
+          </button>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            title="Workspace settings"
+            aria-label="Workspace settings"
+            className="text-faint transition-colors hover:text-phosphor"
+          >
+            <SettingsIcon size={13} />
+          </button>
+        </div>
+
         <div className="flex items-center gap-[3px]">
           <button
             onClick={() => window.api.minimizeWindow()}
@@ -71,6 +130,8 @@ export function TitleBar(): JSX.Element {
           </button>
         </div>
       </div>
+
+      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   )
 }

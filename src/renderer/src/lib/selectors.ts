@@ -1,210 +1,220 @@
-import type { ActivityEntry, Task } from '@shared/types'
-import { dayKey, daysFromToday, formatDayHeading, isFuture, isOverdue, isToday, sameDay } from './date'
+import type { ProjectRecord } from '@shared/radar'
+import { dayKey, formatDayHeading, parseDateLocal } from './date'
+import { datedDeadlineDays } from './projectRadar'
+import { taskDueDate, taskText } from './taskDue'
 import type { View } from '../store/useStore'
 
-const PRIORITY_RANK: Record<Task['priority'], number> = {
-  P1: 0,
-  P2: 1,
-  P3: 2,
-  P4: 3,
-  none: 4
+const DAY_MS = 86_400_000
+
+/** Parse a `YYYY-MM-DD` deadline as a *local* calendar day (avoids UTC off-by-one). */
+export const deadlineDate = parseDateLocal
+
+/** Active contacts on the radar — everything except archived projects. */
+export function projectsOnRadar(projects: ProjectRecord[]): ProjectRecord[] {
+  return projects.filter((p) => p.status !== 'archived')
 }
 
-/** A task is snoozed (hidden from action views) while its snooze time is in the future. */
-export function isSnoozed(task: Task, ref: Date = new Date()): boolean {
-  return isFuture(task.snoozedUntil, ref)
+/** A project is "neglected" when untouched longer than `days` (shipped/archived opt out). */
+export function isNeglected(p: ProjectRecord, ref: Date = new Date(), days = 30): boolean {
+  if (p.status === 'archived' || p.status === 'shipped' || p.ghost) return false
+  const last = p.last_session ?? p.created
+  if (!last) return false
+  return (ref.getTime() - new Date(last).getTime()) / DAY_MS > days
 }
 
-/** Sort active tasks: starred first, then priority, then due date, then manual order. */
-function compareActive(a: Task, b: Task): number {
-  if (a.starred !== b.starred) return a.starred ? -1 : 1
-  if (PRIORITY_RANK[a.priority] !== PRIORITY_RANK[b.priority]) {
-    return PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]
+/** Days until a project's *effective* deadline — nearest task due or hard deadline; null when neither. */
+function deadlineDays(p: ProjectRecord, ref: Date): number | null {
+  return datedDeadlineDays(p, ref)
+}
+
+/** Sort: real deadlines first (soonest), then horizon, then name. */
+function compareUrgency(a: ProjectRecord, b: ProjectRecord, ref: Date): number {
+  const ad = deadlineDays(a, ref)
+  const bd = deadlineDays(b, ref)
+  if (ad !== bd) {
+    if (ad === null) return 1
+    if (bd === null) return -1
+    return ad - bd
   }
-  const ad = a.due ? new Date(a.due.date).getTime() : Infinity
-  const bd = b.due ? new Date(b.due.date).getTime() : Infinity
-  if (ad !== bd) return ad - bd
-  return a.order - b.order
+  if (a.priority !== b.priority) return a.priority - b.priority
+  return (a.name ?? '').localeCompare(b.name ?? '')
 }
 
-/** Sort completed tasks: most-recently-finished first (stable for un-stamped ones). */
-function compareCompleted(a: Task, b: Task): number {
-  return (b.completedAt ?? '').localeCompare(a.completedAt ?? '') || a.order - b.order
-}
-
-/** Whether a task belongs in an action view, ignoring completion + snooze. */
-function inActionView(task: Task, view: View, ref: Date): boolean {
+/** The projects shown for a list view, filtered + sorted. */
+export function projectsForView(
+  projects: ProjectRecord[],
+  view: View,
+  ref: Date = new Date(),
+  neglectedDays = 30
+): ProjectRecord[] {
+  const live = projects.filter((p) => p.status !== 'archived' && !p.ghost)
   switch (view.kind) {
+    case 'today': {
+      // "Due soon": a real deadline within a week (incl. overdue) or a today/week horizon.
+      const soon = live.filter((p) => {
+        const d = deadlineDays(p, ref)
+        if (d !== null) return d <= 7
+        return p.horizon === 'today' || p.horizon === 'week'
+      })
+      return soon.sort((a, b) => compareUrgency(a, b, ref))
+    }
+    case 'neglected':
+      return live
+        .filter((p) => isNeglected(p, ref, neglectedDays))
+        .sort((a, b) => compareUrgency(a, b, ref))
     case 'inbox':
-      return task.projectId === null
-    case 'today':
-      // Today merges the old Today + Upcoming: every dated task. Overdue/today
-      // show bright; future ones render faded (the "horizon" tail).
-      return !!task.due
-    case 'upcoming':
-      return !!task.due
-    case 'project':
-      return task.projectId === view.id
+      return live.filter((p) => p.name === 'Inbox')
+    case 'all':
+      return [...live].sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
     default:
-      return false
+      return []
   }
-}
-
-/** In the merged Today view, future-dated tasks sort below (and render faded). */
-function isFutureDated(task: Task, ref: Date): boolean {
-  const d = daysFromToday(task.due?.date, ref)
-  return d !== null && d > 0
 }
 
 /**
- * The tasks shown for a given view, filtered and sorted.
- *
- * Completed tasks stay visible in their list — struck through and sunk to the
- * bottom, checklist-style — rather than vanishing. `showCompleted` collapses
- * them when a list gets noisy (they remain in the Completed view + Logbook).
+ * A dated thing on the calendar — a **task milestone** (a `(due …)`) or a project's own
+ * **hard deadline**. Deadlines live on tasks, so most calendar entries are milestones;
+ * a task-less project with an explicit `deadline` contributes a `deadline` entry.
  */
-export function tasksForView(
-  tasks: Task[],
-  view: View,
-  ref: Date = new Date(),
-  showCompleted = true
-): Task[] {
-  switch (view.kind) {
-    case 'radar':
-    case 'logbook':
-    case 'calendar':
-      // These views own their own selectors (tasksOnRadar / buildLogbook / tasksByDayKey).
-      return []
-    case 'completed':
-      return tasks.filter((t) => t.completed).sort(compareCompleted)
-    case 'snoozed':
-      return tasks
-        .filter((t) => !t.completed && isSnoozed(t, ref))
-        .sort((a, b) => (a.snoozedUntil ?? '').localeCompare(b.snoozedUntil ?? ''))
-  }
-
-  // Action views (inbox / today / upcoming / project).
-  const members = tasks.filter((t) => inActionView(t, view, ref))
-  // Snoozed-but-incomplete tasks hide from the action views (still shown in a
-  // project, with an indicator). Completed tasks are never treated as snoozed.
-  const keepSnoozed = view.kind === 'project'
-  const active = members.filter((t) => !t.completed && (keepSnoozed || !isSnoozed(t, ref)))
-  // Today keeps overdue/today bright at the top, future tasks faded below.
-  if (view.kind === 'today') {
-    active.sort(
-      (a, b) =>
-        Number(isFutureDated(a, ref)) - Number(isFutureDated(b, ref)) || compareActive(a, b)
-    )
-  } else {
-    active.sort(compareActive)
-  }
-  if (!showCompleted) return active
-
-  // Completed tasks stay struck-through in place (checklist-style). In the
-  // date-bounded views (Today/Upcoming) only keep ones finished *today*, so old
-  // completed tasks don't pile up forever; Inbox/Project keep the full checklist
-  // until the user collapses it. (All completed tasks always remain in the
-  // Completed view + Logbook regardless.)
-  const dateBounded = view.kind === 'today' || view.kind === 'upcoming'
-  const completed = members
-    .filter(
-      (t) =>
-        t.completed &&
-        (!dateBounded || (!!t.completedAt && sameDay(new Date(t.completedAt), ref)))
-    )
-    .sort(compareCompleted)
-  return [...active, ...completed]
+export interface CalendarItem {
+  blipPath: string
+  projectName: string
+  category: string
+  priority: number
+  kind: 'task' | 'deadline'
+  /** The task text (milestone) or the project name (hard deadline). */
+  label: string
+  /** Index of the source task in `project.tasks` (only for `kind: 'task'`). */
+  taskIndex?: number
 }
 
-/** The active, non-snoozed tasks plotted on the radar (incl. undated → someday). */
-export function tasksOnRadar(tasks: Task[], ref: Date = new Date()): Task[] {
-  return tasks.filter((t) => !t.completed && !isSnoozed(t, ref))
-}
-
-/** Tasks due on a specific local calendar day (active first, completed last). */
-export function tasksOnDay(tasks: Task[], dayISO: string): Task[] {
-  const target = new Date(dayISO)
-  const matching = tasks.filter((t) => t.due && sameDay(new Date(t.due.date), target))
-  const active = matching.filter((t) => !t.completed).sort(compareActive)
-  const completed = matching.filter((t) => t.completed).sort(compareCompleted)
-  return [...active, ...completed]
-}
-
-/** Index every dated task by its day key for the calendar grid. */
-export function tasksByDayKey(tasks: Task[]): Map<string, Task[]> {
-  const map = new Map<string, Task[]>()
-  for (const t of tasks) {
-    if (!t.due) continue
-    const key = dayKey(new Date(t.due.date))
+/** Index every milestone + hard deadline by its local day key (for the calendar grid). */
+export function calendarItemsByDay(projects: ProjectRecord[]): Map<string, CalendarItem[]> {
+  const map = new Map<string, CalendarItem[]>()
+  const push = (key: string, item: CalendarItem): void => {
     const bucket = map.get(key)
-    if (bucket) bucket.push(t)
-    else map.set(key, [t])
+    if (bucket) bucket.push(item)
+    else map.set(key, [item])
   }
-  for (const bucket of map.values()) {
-    bucket.sort((a, b) => {
-      if (a.completed !== b.completed) return a.completed ? 1 : -1
-      return a.completed ? compareCompleted(a, b) : compareActive(a, b)
+  for (const p of projects) {
+    if (p.status === 'archived' || p.ghost) continue
+    const meta = { blipPath: p.blipPath, projectName: p.name ?? 'Project', category: p.category, priority: p.priority }
+    if (p.deadline) {
+      const d = deadlineDate(p.deadline)
+      // A garbage deadline (Invalid Date) would make dayKey → toISOString() throw — skip it.
+      if (!Number.isNaN(d.getTime())) {
+        push(dayKey(d), { ...meta, kind: 'deadline', label: p.name ?? 'Project' })
+      }
+    }
+    p.tasks.forEach((t, taskIndex) => {
+      if (t.done) return
+      const due = taskDueDate(t.text)
+      if (due) push(dayKey(deadlineDate(due)), { ...meta, kind: 'task', label: taskText(t.text), taskIndex })
     })
   }
+  for (const bucket of map.values()) bucket.sort((a, b) => a.priority - b.priority)
   return map
 }
 
-export function viewTitle(view: View, projectName?: string): string {
+/** Milestones + hard deadlines falling on a specific calendar day. */
+export function calendarItemsOnDay(projects: ProjectRecord[], dayISO: string): CalendarItem[] {
+  return calendarItemsByDay(projects).get(dayISO) ?? []
+}
+
+export function viewTitle(view: View): string {
   switch (view.kind) {
     case 'radar':
       return 'Radar'
-    case 'inbox':
-      return 'Inbox'
     case 'today':
-      return 'Today'
-    case 'upcoming':
-      return 'Upcoming'
-    case 'snoozed':
-      return 'Snoozed'
-    case 'completed':
-      return 'Completed'
-    case 'logbook':
-      return 'Logbook'
+      return 'Due Soon'
     case 'calendar':
       return 'Calendar'
-    case 'project':
-      return projectName ?? 'Project'
+    case 'logbook':
+      return 'Logbook'
+    case 'neglected':
+      return 'Neglected'
+    case 'inbox':
+      return 'Inbox'
+    case 'all':
+      return 'All Projects'
   }
 }
 
+/* ── Cross-project session-log feed (the activity timeline, elevated) ── */
+
+export interface SessionEntry {
+  date: string
+  author: string
+  lines: string[]
+}
+
+/** Parse a `# Session log` body into dated entries (newest preserved order). */
+export function parseSessionLog(text: string | undefined): SessionEntry[] {
+  if (!text) return []
+  // Lenient on the author tail: em/en-dash or plain hyphen(s), a missing author, or an empty
+  // one (`--author ""` emits "## DATE — ") all still count — entries must never silently
+  // vanish from the Logbook/heatmap while `last_session` keeps updating. The tail whitespace
+  // is same-line `[ \t]` only, so an author-less heading can't swallow the next `- ` bullet.
+  const heads = [...text.matchAll(/^##\s+(\d{4}-\d{2}-\d{2})(?:[ \t]+[—–-]+[ \t]*(.*?))?[ \t]*$/gm)]
+  const out: SessionEntry[] = []
+  for (let i = 0; i < heads.length; i++) {
+    const h = heads[i]!
+    const start = h.index! + h[0].length
+    const end = i + 1 < heads.length ? heads[i + 1]!.index! : text.length
+    const lines = text
+      .slice(start, end)
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith('- '))
+      .map((l) => l.slice(2).trim())
+    out.push({ date: h[1]!, author: h[2]?.trim() || 'unknown', lines })
+  }
+  return out
+}
+
 export interface LogItem {
-  taskId: string
-  taskTitle: string
-  entry: ActivityEntry
+  projectName: string
+  blipPath: string
+  entry: SessionEntry
 }
 
 export interface LogDay {
-  /** Stable per-day key (local calendar day). */
   key: string
   heading: string
   items: LogItem[]
 }
 
-/**
- * The Logbook: every meaningful activity entry across all tasks, newest first,
- * grouped by day. Skips 'created' (noise) — this is a record of what moved forward.
- */
-export function buildLogbook(tasks: Task[], ref: Date = new Date()): LogDay[] {
-  const items: LogItem[] = []
-  for (const t of tasks) {
-    for (const entry of t.activity) {
-      if (entry.kind === 'created') continue
-      items.push({ taskId: t.id, taskTitle: t.title, entry })
+/** Count session-log entries per local day across all projects — feeds the activity heatmap. */
+export function activityCounts(projects: ProjectRecord[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const p of projects) {
+    for (const e of parseSessionLog(p.sessionLog)) {
+      counts.set(e.date, (counts.get(e.date) ?? 0) + 1)
     }
   }
-  items.sort((a, b) => b.entry.ts.localeCompare(a.entry.ts))
+  return counts
+}
+
+/** Every project's session-log entries, newest first, grouped by day. The portfolio timeline. */
+export function buildLogbook(projects: ProjectRecord[], ref: Date = new Date()): LogDay[] {
+  const items: LogItem[] = []
+  for (const p of projects) {
+    for (const entry of parseSessionLog(p.sessionLog)) {
+      items.push({ projectName: p.name ?? 'Project', blipPath: p.blipPath, entry })
+    }
+  }
+  items.sort((a, b) => b.entry.date.localeCompare(a.entry.date))
 
   const days: LogDay[] = []
   let current: LogDay | null = null
   for (const item of items) {
-    const key = new Date(item.entry.ts).toDateString()
+    const key = item.entry.date
     if (!current || current.key !== key) {
-      current = { key, heading: formatDayHeading(item.entry.ts, ref), items: [] }
+      current = {
+        key,
+        heading: formatDayHeading(deadlineDate(item.entry.date).toISOString(), ref),
+        items: []
+      }
       days.push(current)
     }
     current.items.push(item)

@@ -1,0 +1,65 @@
+{
+  "name": "radar-blip",
+  "version": "0.1.0",
+  "description": "Own your project state in a plain, git-friendly Markdown file your AI coding agent keeps current. The bulletproof BLIP.md engine + radar-blip CLI behind RADAR.",
+  "keywords": [
+    "blip",
+    "radar",
+    "todo",
+    "tasks",
+    "project-management",
+    "ai",
+    "agent",
+    "claude",
+    "codex",
+    "cli",
+    "markdown"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "author": "TerraByte Solutions LLC",
+  "homepage": "https://github.com/TerraByte-Dev/RADAR#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TerraByte-Dev/RADAR.git",
+    "directory": "packages/blip-core"
+  },
+  "bugs": "https://github.com/TerraByte-Dev/RADAR/issues",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "radar-blip": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "src"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-skills.mjs",
+    "test": "npm run build && vitest run",
+    "test:watch": "vitest",
+    "blip": "tsx src/cli.ts",
+    "prepublishOnly": "npm test"
+  },
+  "dependencies": {
+    "yaml": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.0"
+  }
+}

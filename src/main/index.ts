@@ -1,12 +1,12 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, session, shell } from 'electron'
 import { join } from 'node:path'
-import { IPC } from '../shared/types'
-import { registerIpcHandlers } from './ipc/handlers'
-import { Repository } from './store/repository'
+import { IPC, type UpdateEvent } from '../shared/types'
+import { registerRadarHandlers } from './ipc/radar'
 
 const isDev = !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
+let stopRadar: (() => void) | null = null
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -22,15 +22,30 @@ function createWindow(): void {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      // The preload only uses contextBridge + ipcRenderer, so it runs sandboxed fine.
+      sandbox: true,
       contextIsolation: true
     }
   })
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
 
+  // The app never navigates — block renderer-initiated navigation outright. Dev exception:
+  // Vite's full-reload is a same-URL location.reload(), which does emit will-navigate.
+  mainWindow.webContents.on('will-navigate', (e) => {
+    if (isDev && e.url === mainWindow?.webContents.getURL()) return
+    e.preventDefault()
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    // Same allowlist as radar:open-external — never hand a non-web URL to the OS.
+    try {
+      if (['http:', 'https:'].includes(new URL(details.url).protocol)) {
+        shell.openExternal(details.url)
+      }
+    } catch {
+      /* unparseable URL — drop it */
+    }
     return { action: 'deny' }
   })
 
@@ -64,6 +79,52 @@ function registerGlobalQuickAdd(): void {
   })
 }
 
+/**
+ * Auto-update IPC (window.api): version readout + a manual check → download → install flow, bridged to
+ * electron-updater's events. Packaged-only — in dev every check reports `devMode` and the renderer shows a
+ * friendly note (the Updates pane). Handlers are registered synchronously (no invoke race); the updater is
+ * loaded lazily so dev never touches it.
+ */
+function registerUpdates(getWindow: () => BrowserWindow | null): void {
+  ipcMain.handle(IPC.appGetVersion, () => app.getVersion())
+
+  if (!app.isPackaged) {
+    ipcMain.handle(IPC.updateCheck, async () => ({ devMode: true }))
+    ipcMain.handle(IPC.updateDownload, async () => {})
+    ipcMain.on(IPC.updateInstall, () => {})
+    return
+  }
+
+  const updater = import('electron-updater').then(({ autoUpdater }) => {
+    const send = (event: UpdateEvent): void => getWindow()?.webContents.send(IPC.updateEvent, event)
+    autoUpdater.autoDownload = false
+    autoUpdater.on('update-available', (info) => send({ type: 'available', version: info.version }))
+    autoUpdater.on('update-not-available', () => send({ type: 'not-available' }))
+    autoUpdater.on('download-progress', (p) => send({ type: 'progress', percent: Math.round(p.percent) }))
+    autoUpdater.on('update-downloaded', (info) => send({ type: 'downloaded', version: info.version }))
+    autoUpdater.on('error', (err) =>
+      send({ type: 'error', message: err instanceof Error ? err.message : String(err ?? 'unknown error') })
+    )
+    return autoUpdater
+  })
+
+  ipcMain.handle(IPC.updateCheck, async () => {
+    const autoUpdater = await updater
+    await autoUpdater.checkForUpdates()
+    return { devMode: false }
+  })
+  ipcMain.handle(IPC.updateDownload, async () => {
+    const autoUpdater = await updater
+    await autoUpdater.downloadUpdate()
+  })
+  ipcMain.on(IPC.updateInstall, () => {
+    updater.then((autoUpdater) => autoUpdater.quitAndInstall()).catch(() => {})
+  })
+
+  // Initial silent check on launch (replaces the old checkForUpdatesAndNotify()).
+  updater.then((autoUpdater) => autoUpdater.checkForUpdates()).catch(() => {})
+}
+
 /** Strict CSP for the packaged app. Skipped in dev so Vite HMR works. */
 function applyProdCsp(): void {
   if (isDev) return
@@ -72,30 +133,49 @@ function applyProdCsp(): void {
       responseHeaders: {
         ...details.responseHeaders,
         'Content-Security-Policy': [
-          "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;"
+          "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; " +
+            "object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none';"
         ]
       }
     })
   })
 }
 
-app.whenReady().then(async () => {
-  const repo = await Repository.open()
-  registerIpcHandlers(repo)
-  registerWindowControls()
-  applyProdCsp()
-  createWindow()
-  registerGlobalQuickAdd()
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+// Single instance: a second launch quits immediately and focuses the running window instead
+// (two instances would race the watcher, the config file, and the global hotkey).
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
   })
-})
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
+  app.whenReady().then(() => {
+    registerWindowControls()
+    applyProdCsp()
+    createWindow()
+    // RADAR project model (BLIP.md): scan/watch/write + live push to the renderer.
+    stopRadar = registerRadarHandlers(() => mainWindow)
+    registerGlobalQuickAdd()
 
-app.on('will-quit', () => {
-  globalShortcut.unregisterAll()
-})
+    // Auto-update — packaged builds only; a silent no-op until a release is published
+    // (see electron-builder.yml `publish` + docs/RELEASING.md). Drives the Settings → Updates pane.
+    registerUpdates(() => mainWindow)
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
+  })
+
+  app.on('will-quit', () => {
+    globalShortcut.unregisterAll()
+    stopRadar?.()
+  })
+}

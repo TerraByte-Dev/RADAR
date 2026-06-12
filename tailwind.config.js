@@ -5,44 +5,43 @@ module.exports = {
     extend: {
       colors: {
         // ── TERRABYTE.SYS — Y2K terminal / CRT phosphor palette ──
-        // Existing semantic names are remapped onto the phosphor palette so
-        // every legacy utility (bg-surface, text-ink, …) renders on-brand.
-        bg: '#000000',
-        surface: '#020503',
-        elevated: '#04090a',
-        hover: '#0a1611',
-        border: 'rgb(0 255 136 / 0.18)',
+        // Every token maps onto a CSS variable holding space-separated RGB channels (defined in
+        // styles/index.css `:root` + per-theme `[data-theme]` blocks), so the whole palette recolors at
+        // runtime via the theme engine (lib/theme.ts). `<alpha-value>` keeps `text-x/50` opacity utilities
+        // working; fixed-alpha derived tokens (border/rule/veil/muted/faint) stay literal on purpose.
+        bg: 'rgb(var(--bg-rgb) / <alpha-value>)',
+        surface: 'rgb(var(--panel-rgb) / <alpha-value>)',
+        elevated: 'rgb(var(--panel-lite-rgb) / <alpha-value>)',
+        hover: 'rgb(var(--hover-rgb) / <alpha-value>)',
+        border: 'rgb(var(--phosphor-rgb) / 0.18)',
         // Text
-        ink: '#9bf5b8',
-        muted: 'rgb(155 245 184 / 0.58)',
-        faint: 'rgb(155 245 184 / 0.32)',
+        ink: 'rgb(var(--ink-rgb) / <alpha-value>)',
+        muted: 'rgb(var(--ink-rgb) / 0.58)',
+        faint: 'rgb(var(--ink-rgb) / 0.32)',
         // Accent === phosphor
-        accent: '#00FF88',
-        'accent-soft': 'rgb(0 255 136 / 0.10)',
-        // Priority flags → terminal channel colors
-        p1: '#FF3030',
-        p2: '#FFB000',
-        p3: '#00E5FF',
-        p4: 'rgb(155 245 184 / 0.45)',
+        accent: 'rgb(var(--phosphor-rgb) / <alpha-value>)',
+        'accent-soft': 'rgb(var(--phosphor-rgb) / 0.10)',
+        // Alert red (overdue, destructive) — alias of term.red
+        p1: 'rgb(var(--term-red-rgb) / <alpha-value>)',
 
         // ── New semantic tokens ──
-        panel: '#020503',
-        panelLite: '#04090a',
-        lcd: '#020a05',
-        rule: 'rgb(0 255 136 / 0.18)',
-        ruleDim: 'rgb(0 255 136 / 0.08)',
+        panel: 'rgb(var(--panel-rgb) / <alpha-value>)',
+        panelLite: 'rgb(var(--panel-lite-rgb) / <alpha-value>)',
+        lcd: 'rgb(var(--lcd-rgb) / <alpha-value>)',
+        rule: 'rgb(var(--phosphor-rgb) / 0.18)',
+        ruleDim: 'rgb(var(--phosphor-rgb) / 0.08)',
         phosphor: {
-          DEFAULT: '#00FF88',
-          bright: '#7CFF6B',
-          dim: '#1f5e3a',
-          veil: 'rgb(0 255 136 / 0.08)',
-          faint: 'rgb(0 255 136 / 0.20)'
+          DEFAULT: 'rgb(var(--phosphor-rgb) / <alpha-value>)',
+          bright: 'rgb(var(--phosphor-bright-rgb) / <alpha-value>)',
+          dim: 'rgb(var(--phosphor-dim-rgb) / <alpha-value>)',
+          veil: 'rgb(var(--phosphor-rgb) / 0.08)',
+          faint: 'rgb(var(--phosphor-rgb) / 0.20)'
         },
         term: {
-          cyan: '#00E5FF',
-          amber: '#FFB000',
-          magenta: '#FF2E9A',
-          red: '#FF3030'
+          cyan: 'rgb(var(--term-cyan-rgb) / <alpha-value>)',
+          amber: 'rgb(var(--term-amber-rgb) / <alpha-value>)',
+          magenta: 'rgb(var(--term-magenta-rgb) / <alpha-value>)',
+          red: 'rgb(var(--term-red-rgb) / <alpha-value>)'
         }
       },
       fontFamily: {
@@ -68,8 +67,8 @@ module.exports = {
         full: '9999px'
       },
       boxShadow: {
-        glow: '0 0 14px rgb(0 255 136 / 0.20)',
-        'glow-strong': '0 0 24px rgb(0 255 136 / 0.35)'
+        glow: '0 0 14px rgb(var(--phosphor-rgb) / 0.20)',
+        'glow-strong': '0 0 24px rgb(var(--phosphor-rgb) / 0.35)'
       },
       transitionTimingFunction: {
         calm: 'cubic-bezier(0.22, 1, 0.36, 1)'

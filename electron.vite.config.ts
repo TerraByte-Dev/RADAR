@@ -4,7 +4,10 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // Bundle the ESM `radar-blip` engine into the main-process bundle (it is not a
+    // CJS module electron can `require` at runtime); its only runtime dep, `yaml`,
+    // is bundled transitively. Everything else stays externalized.
+    plugins: [externalizeDepsPlugin({ exclude: ['radar-blip'] })],
     build: {
       rollupOptions: {
         input: { index: resolve(__dirname, 'src/main/index.ts') }

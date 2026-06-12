@@ -12,31 +12,19 @@ function dayDiff(a: Date, b: Date): number {
   return Math.round(ms / 86_400_000)
 }
 
-export function isToday(due: DueDate | undefined, ref: Date = new Date()): boolean {
-  if (!due) return false
-  return dayDiff(ref, new Date(due.date)) === 0
+/** Parse a bare `YYYY-MM-DD` as a *local* calendar day; full datetimes pass through. */
+export function parseDateLocal(s: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(s)
 }
 
-export function isOverdue(due: DueDate | undefined, ref: Date = new Date()): boolean {
-  if (!due) return false
-  return dayDiff(ref, new Date(due.date)) < 0
-}
-
-/** Due today or any time in the future. */
-export function isUpcoming(due: DueDate | undefined, ref: Date = new Date()): boolean {
-  if (!due) return false
-  return dayDiff(ref, new Date(due.date)) >= 0
-}
-
-export function isFuture(iso: string | undefined, ref: Date = new Date()): boolean {
-  if (!iso) return false
-  return new Date(iso).getTime() > ref.getTime()
-}
-
-/** Whole-day signed distance from today to a date (negative = past). null if no date. */
+/** Whole-day signed distance from today to a date (negative = past). null if no/garbage date. */
 export function daysFromToday(iso: string | undefined, ref: Date = new Date()): number | null {
   if (!iso) return null
-  return dayDiff(ref, new Date(iso))
+  const d = parseDateLocal(iso)
+  // A hand-edited/hostile non-date ("tomorrow", "asap") must not leak NaN into radar math.
+  if (Number.isNaN(d.getTime())) return null
+  return dayDiff(ref, d)
 }
 
 const TIME_FMT = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
@@ -56,20 +44,6 @@ export function formatDue(due: DueDate, ref: Date = new Date()): string {
   else label = DATE_FMT.format(date)
 
   return due.hasTime ? `${label} ${TIME_FMT.format(date)}` : label
-}
-
-/** Compact timestamp for the activity timeline: today → time, else short date. */
-export function formatTimestamp(iso: string, ref: Date = new Date()): string {
-  const date = new Date(iso)
-  const diff = dayDiff(ref, date)
-  if (diff === 0) return TIME_FMT.format(date)
-  if (diff === -1) return 'Yesterday'
-  return DATE_FMT.format(date)
-}
-
-/** Just the time-of-day, e.g. "3:40 PM" — used within day-grouped feeds. */
-export function formatClock(iso: string): string {
-  return TIME_FMT.format(new Date(iso))
 }
 
 /** Day heading for grouped feeds: "Today", "Yesterday", weekday, or short date. */

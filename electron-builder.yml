@@ -1,5 +1,5 @@
-appId: com.terrabyte.todoplus
-productName: ToDoPlus
+appId: com.terrabyte.radar
+productName: RADAR
 directories:
   buildResources: build
   output: dist
@@ -13,3 +13,19 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+mac:
+  category: public.app-category.productivity
+  icon: build/icon.png
+  target:
+    - dmg
+linux:
+  category: Utility
+  icon: build/icon.png
+  target:
+    - AppImage
+# Auto-update source (electron-updater reads this at runtime). Releases publish here;
+# see docs/RELEASING.md. Update `repo` if the GitHub repository name changes.
+publish:
+  provider: github
+  owner: TerraByte-Dev
+  repo: RADAR

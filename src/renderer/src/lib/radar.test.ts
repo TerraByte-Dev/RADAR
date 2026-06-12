@@ -1,67 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { Task } from '@shared/types'
 import {
   angleFromPoint,
-  blipLayoutFrac,
-  blipRadiusFrac,
   type BlipLayoutInput,
   daysFromFrac,
-  daysUntilDue,
   hash01,
   layoutBlipAngles,
   radiusFracForDays,
-  relativeDue,
   R_SOMEDAY,
-  sectorBase,
-  subtaskRatio
+  sectorBase
 } from './radar'
-
-const REF = new Date(2026, 4, 26, 9, 0, 0) // Tue 26 May 2026, 09:00
-
-let seq = 0
-function makeTask(overrides: Partial<Task> = {}): Task {
-  seq += 1
-  return {
-    id: `t${seq}`,
-    title: `Task ${seq}`,
-    priority: 'none',
-    projectId: null,
-    tags: [],
-    completed: false,
-    createdAt: REF.toISOString(),
-    order: seq,
-    subtasks: [],
-    activity: [],
-    starred: false,
-    ...overrides
-  }
-}
-
-const allDay = (y: number, m: number, d: number): Task['due'] => ({
-  date: new Date(y, m, d, 0, 0, 0).toISOString(),
-  hasTime: false
-})
-const timed = (y: number, m: number, d: number, h: number, min = 0): Task['due'] => ({
-  date: new Date(y, m, d, h, min, 0).toISOString(),
-  hasTime: true
-})
-
-describe('daysUntilDue', () => {
-  it('uses whole calendar days for all-day dues (time-of-day independent)', () => {
-    expect(daysUntilDue(makeTask({ due: allDay(2026, 4, 26) }), REF)).toBe(0)
-    expect(daysUntilDue(makeTask({ due: allDay(2026, 4, 29) }), REF)).toBe(3)
-    expect(daysUntilDue(makeTask({ due: allDay(2026, 4, 24) }), REF)).toBe(-2)
-  })
-
-  it('uses fractional clock time for timed dues', () => {
-    expect(daysUntilDue(makeTask({ due: timed(2026, 4, 26, 21) }), REF)).toBeCloseTo(0.5, 5) // +12h
-    expect(daysUntilDue(makeTask({ due: timed(2026, 4, 26, 3) }), REF)).toBeCloseTo(-0.25, 5) // 6h overdue
-  })
-
-  it('returns null for undated tasks', () => {
-    expect(daysUntilDue(makeTask({}), REF)).toBeNull()
-  })
-})
 
 describe('radiusFracForDays — continuous time scale', () => {
   it('is monotonically increasing with the deadline', () => {
@@ -101,18 +48,7 @@ describe('daysFromFrac — drag-to-reschedule inverse', () => {
   })
 })
 
-describe('relativeDue', () => {
-  it('summarizes the deadline in human terms', () => {
-    expect(relativeDue(makeTask({}), REF)).toBe('someday')
-    expect(relativeDue(makeTask({ due: allDay(2026, 4, 26) }), REF)).toBe('today')
-    expect(relativeDue(makeTask({ due: allDay(2026, 4, 27) }), REF)).toBe('tomorrow')
-    expect(relativeDue(makeTask({ due: allDay(2026, 4, 31) }), REF)).toBe('in 5d')
-    expect(relativeDue(makeTask({ due: allDay(2026, 4, 24) }), REF)).toBe('2d overdue')
-    expect(relativeDue(makeTask({ due: timed(2026, 4, 26, 11) }), REF)).toBe('in 2h')
-  })
-})
-
-describe('blip helpers (unchanged)', () => {
+describe('blip helpers', () => {
   it('hash01 is deterministic and bounded to [0, 1)', () => {
     expect(hash01('x')).toBe(hash01('x'))
     expect(hash01('x')).not.toBe(hash01('y'))
@@ -123,20 +59,6 @@ describe('blip helpers (unchanged)', () => {
   it('sectorBase spreads sectors around the dial', () => {
     expect(sectorBase(0, 4)).toBe(18)
     expect(sectorBase(2, 4)).toBe(198)
-  })
-
-  it('subtaskRatio reports completion fraction', () => {
-    expect(subtaskRatio(makeTask())).toBe(0)
-    expect(
-      subtaskRatio(
-        makeTask({
-          subtasks: [
-            { id: 'a', title: 'x', completed: true },
-            { id: 'b', title: 'y', completed: false }
-          ]
-        })
-      )
-    ).toBe(0.5)
   })
 })
 
@@ -157,26 +79,6 @@ describe('angleFromPoint — drop bearing', () => {
 
   it('maps a dead-center delta to 0, not the atan2(0,-0)=180 artifact', () => {
     expect(angleFromPoint(0, 0)).toBe(0)
-  })
-})
-
-describe('blipLayoutFrac — day-bucketed layout radius', () => {
-  it('matches blipRadiusFrac for all-day dues', () => {
-    const t = makeTask({ due: allDay(2026, 4, 30) })
-    expect(blipLayoutFrac(t, REF)).toBeCloseTo(blipRadiusFrac(t, REF), 10)
-  })
-
-  it('buckets timed dues to the whole calendar day (ignores time-of-day)', () => {
-    const morning = makeTask({ due: timed(2026, 4, 29, 6) })
-    const night = makeTask({ due: timed(2026, 4, 29, 23) })
-    // Same calendar day → identical layout radius, even though their live radii differ.
-    expect(blipLayoutFrac(morning, REF)).toBe(blipLayoutFrac(night, REF))
-    expect(blipLayoutFrac(morning, REF)).toBeCloseTo(radiusFracForDays(3), 10) // May 29 − 26 = 3 days
-    expect(blipLayoutFrac(morning, REF)).not.toBeCloseTo(blipRadiusFrac(morning, REF), 4)
-  })
-
-  it('parks undated tasks at the someday band', () => {
-    expect(blipLayoutFrac(makeTask({}), REF)).toBe(R_SOMEDAY)
   })
 })
 

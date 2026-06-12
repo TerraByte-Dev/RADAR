@@ -1,32 +1,44 @@
 import { create } from 'zustand'
-import type { DueDate, Priority, Project, Subtask, Task } from '@shared/types'
-import type { ParsedQuickAdd } from '../lib/nlp'
+import type {
+  BlipFieldPatch,
+  BlipTaskOp,
+  ProjectRecord,
+  RadarConfig
+} from '@shared/radar'
+import { parseQuickAdd } from '../lib/nlp'
 import { addMonths, currentMonth, dayKey, type YearMonth } from '../lib/date'
-import { nextProjectColor } from '../lib/palette'
+import {
+  CRT_CHANGE_EVENT,
+  THEME_CHANGE_EVENT,
+  crtVisible,
+  getCrtOff,
+  getThemeId,
+  setCrtOff,
+  themeSupportsCrt
+} from '../lib/theme'
 
 export type View =
   | { kind: 'radar' }
-  | { kind: 'inbox' }
   | { kind: 'today' }
-  | { kind: 'upcoming' }
-  | { kind: 'snoozed' }
-  | { kind: 'completed' }
-  | { kind: 'logbook' }
   | { kind: 'calendar' }
-  | { kind: 'project'; id: string }
+  | { kind: 'logbook' }
+  | { kind: 'neglected' }
+  | { kind: 'inbox' }
+  | { kind: 'all' }
 
 /* ── Renderer-local UI preferences (persisted to localStorage) ── */
-const SETTINGS_KEY = 'todoplus.settings'
+// `showCompleted` lives here; CRT now lives in the theme module (`lib/theme.ts`, `radar.crt-off`) as the
+// single source of truth, reconciled into `crtEffects` below via the theme-change events.
+const SETTINGS_KEY = 'radar.settings'
 
 interface PersistedSettings {
-  /** CRT scanlines / vignette / flicker overlay. */
-  crtEffects: boolean
-  /** Keep completed tasks struck-through in their list (vs. hiding them). */
   showCompleted: boolean
+  /** A project is "neglected" after this many days untouched (Radar behavior setting). */
+  neglectedDays: number
 }
 
 function loadSettings(): PersistedSettings {
-  const fallback: PersistedSettings = { crtEffects: true, showCompleted: true }
+  const fallback: PersistedSettings = { showCompleted: true, neglectedDays: 30 }
   try {
     if (typeof localStorage === 'undefined') return fallback
     const raw = localStorage.getItem(SETTINGS_KEY)
@@ -40,33 +52,66 @@ function saveSettings(s: PersistedSettings): void {
   try {
     if (typeof localStorage !== 'undefined') localStorage.setItem(SETTINGS_KEY, JSON.stringify(s))
   } catch {
-    /* persistence is best-effort */
+    /* best-effort */
   }
 }
 
 /** Boot splash plays once per real app launch (survives HMR, resets on relaunch). */
 function bootAlreadySeen(): boolean {
   try {
-    return typeof sessionStorage !== 'undefined' && sessionStorage.getItem('todoplus.boot') === '1'
+    return typeof sessionStorage !== 'undefined' && sessionStorage.getItem('radar.boot') === '1'
   } catch {
     return false
   }
 }
 
+/** First-run onboarding is shown once, then dismissed for good. */
+function onboardedAlready(): boolean {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('radar.onboarded') === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Replace (or append) a project record by its blipPath. */
+function replace(list: ProjectRecord[], rec: ProjectRecord): ProjectRecord[] {
+  const i = list.findIndex((p) => p.blipPath === rec.blipPath)
+  if (i < 0) return [...list, rec]
+  const next = list.slice()
+  next[i] = rec
+  return next
+}
+
+/**
+ * A legitimately failed write (e.g. post-retry EPERM) — warn, then re-scan so the UI
+ * resyncs to disk truth instead of keeping stale optimism on the next interaction.
+ */
+async function recoverFailedWrite(
+  set: (partial: { projects: ProjectRecord[] }) => void,
+  action: string,
+  blipPath: string,
+  e: unknown
+): Promise<void> {
+  console.warn(`${action} write failed for ${blipPath} — resyncing from disk`, e)
+  try {
+    set({ projects: await window.radar.scan() })
+  } catch {
+    /* the re-scan failed too — keep what we have */
+  }
+}
+
 interface StoreState {
-  tasks: Task[]
-  projects: Project[]
+  projects: ProjectRecord[]
+  config: RadarConfig | null
   loaded: boolean
+  watching: boolean
 
   // UI state
   view: View
-  selectedTaskId: string | null
-  expandedTaskId: string | null
+  selectedBlip: string | null // blipPath of the selected radar contact
   quickAddOpen: boolean
   paletteOpen: boolean
-
-  // Radar UI state
-  radarSelectedId: string | null
 
   // Calendar UI state
   calendarMonth: YearMonth
@@ -75,107 +120,94 @@ interface StoreState {
   // Preferences
   crtEffects: boolean
   showCompleted: boolean
+  neglectedDays: number
   bootDone: boolean
+  onboarded: boolean
 
   init(): Promise<void>
   setView(view: View): void
-  setSelectedTask(id: string | null): void
-  toggleExpanded(id: string): void
+  setSelectedBlip(blipPath: string | null): void
   setQuickAddOpen(open: boolean): void
   setPaletteOpen(open: boolean): void
 
-  // Radar
-  setRadarSelected(id: string | null): void
-  /** Pin (or clear, with undefined) a blip's manual radar angle — visual only. */
-  setRadarAngle(id: string, angle: number | undefined): Promise<void>
-  /** Clear every manual radar angle so all blips re-join the auto layout. */
-  resetRadarLayout(): Promise<void>
-
-  // Calendar navigation
   calendarPrevMonth(): void
   calendarNextMonth(): void
   calendarGoToday(): void
   setCalendarSelectedDay(iso: string | null): void
 
-  // Preferences
   toggleCrt(): void
   toggleShowCompleted(): void
+  setNeglectedDays(days: number): void
   finishBoot(): void
+  finishOnboarding(): void
 
-  addTaskFromParsed(parsed: ParsedQuickAdd): Promise<Task>
-  toggleComplete(id: string): Promise<void>
-  patchTask(id: string, patch: Partial<Task>): Promise<void>
-  setPriority(id: string, priority: Priority): Promise<void>
-  setProject(id: string, projectId: string | null): Promise<void>
-  setDue(id: string, due: DueDate | undefined): Promise<void>
-  deleteTask(id: string): Promise<void>
+  // Project (BLIP.md) mutations — every write goes through the engine via IPC.
+  setFields(blipPath: string, patch: BlipFieldPatch): Promise<void>
+  taskOp(blipPath: string, op: BlipTaskOp): Promise<void>
+  handoff(blipPath: string, lines: string[], next?: string): Promise<void>
+  /** Pin (number) or clear (null) a blip's manual radar angle — visual only. */
+  setRadarAngle(blipPath: string, angle: number | null): Promise<void>
+  resetRadarLayout(): Promise<void>
 
-  // Follow-up
-  toggleStar(id: string): Promise<void>
-  setNotes(id: string, notes: string): Promise<void>
-  addSubtask(id: string, title: string): Promise<void>
-  toggleSubtask(id: string, subId: string): Promise<void>
-  deleteSubtask(id: string, subId: string): Promise<void>
-  snooze(id: string, untilISO: string): Promise<void>
-  unsnooze(id: string): Promise<void>
-  addActivityNote(id: string, text: string): Promise<void>
-
-  addProject(name: string, color?: string): Promise<Project>
-  renameProject(id: string, name: string): Promise<void>
-  recolorProject(id: string, color: string): Promise<void>
-  deleteProject(id: string): Promise<void>
+  // Capture + workspace
+  capture(raw: string): Promise<void>
+  addWorkspaceRoot(): Promise<void>
+  removeWorkspaceRoot(root: string): Promise<void>
+  adoptFolder(): Promise<void>
+  /** Adopt a ghost blip in place — write its BLIP.md and turn it into a tracked project. */
+  adoptGhost(project: ProjectRecord): Promise<void>
+  /** Dismiss a project/ghost from the radar (ignore-list it; nothing on disk changes). */
+  dismissProject(project: ProjectRecord): Promise<void>
+  /** Archive a project (status: archived → hidden from the radar; reversible). */
+  archiveProject(blipPath: string): Promise<void>
+  /** Permanently delete a project's BLIP.md (undo an accidental adopt). */
+  deleteProject(blipPath: string): Promise<void>
+  /** Restore a dismissed project folder back onto the radar. */
+  restoreProject(path: string): Promise<void>
 }
 
 export const useStore = create<StoreState>((set, get) => ({
-  tasks: [],
   projects: [],
+  config: null,
   loaded: false,
+  watching: false,
 
   view: { kind: 'radar' },
-  selectedTaskId: null,
-  expandedTaskId: null,
+  selectedBlip: null,
   quickAddOpen: false,
   paletteOpen: false,
-
-  radarSelectedId: null,
 
   calendarMonth: currentMonth(),
   calendarSelectedDay: null,
 
-  crtEffects: loadSettings().crtEffects,
+  // `crtEffects` === "CRT overlay currently visible" — a mirror of the theme engine's truth, kept in sync
+  // by the theme-change subscription in init(). The overlay itself is gated in CSS via `html.crt-off`.
+  crtEffects: crtVisible(),
   showCompleted: loadSettings().showCompleted,
+  neglectedDays: loadSettings().neglectedDays,
   bootDone: bootAlreadySeen(),
+  onboarded: onboardedAlready(),
 
   async init() {
-    const data = await window.api.load()
-    set({ tasks: data.tasks, projects: data.projects, loaded: true })
-  },
+    // Keep `crtEffects` in lockstep with the theme engine (Appearance tab / title bar / palette all route
+    // through it), so CrtOverlay's render gate + the toggle's pressed-state never disagree.
+    const syncCrt = (): void => set({ crtEffects: crtVisible() })
+    window.addEventListener(THEME_CHANGE_EVENT, syncCrt)
+    window.addEventListener(CRT_CHANGE_EVENT, syncCrt)
+    syncCrt()
 
-  setView: (view) => set({ view, selectedTaskId: null }),
-  setSelectedTask: (selectedTaskId) => set({ selectedTaskId }),
-  toggleExpanded: (id) =>
-    set((s) => ({
-      expandedTaskId: s.expandedTaskId === id ? null : id,
-      selectedTaskId: id
-    })),
-  setQuickAddOpen: (quickAddOpen) => set({ quickAddOpen }),
-  setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
-
-  setRadarSelected: (radarSelectedId) => set({ radarSelectedId }),
-
-  async setRadarAngle(id, angle) {
-    // Visual-only; a failed write (e.g. the task was deleted in another pane) is harmless.
-    try {
-      await get().patchTask(id, { radarAngle: angle })
-    } catch {
-      /* best-effort */
+    const [projects, config] = await Promise.all([window.radar.scan(), window.radar.getConfig()])
+    set({ projects, config, loaded: true })
+    if (!get().watching) {
+      window.radar.onProjectsChanged((next) => set({ projects: next }))
+      set({ watching: true })
     }
   },
-  async resetRadarLayout() {
-    const pinned = get().tasks.filter((t) => t.radarAngle != null)
-    // allSettled: never reject if a task vanished mid-clear.
-    await Promise.allSettled(pinned.map((t) => get().patchTask(t.id, { radarAngle: undefined })))
-  },
+
+  setView: (view) => set({ view, selectedBlip: null }),
+  setSelectedBlip: (selectedBlip) => set({ selectedBlip }),
+  setQuickAddOpen: (quickAddOpen) => set({ quickAddOpen }),
+  setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
 
   calendarPrevMonth: () => set((s) => ({ calendarMonth: addMonths(s.calendarMonth, -1) })),
   calendarNextMonth: () => set((s) => ({ calendarMonth: addMonths(s.calendarMonth, 1) })),
@@ -183,144 +215,161 @@ export const useStore = create<StoreState>((set, get) => ({
     set({ calendarMonth: currentMonth(), calendarSelectedDay: dayKey(new Date()) }),
   setCalendarSelectedDay: (calendarSelectedDay) => set({ calendarSelectedDay }),
 
-  toggleCrt: () =>
-    set((s) => {
-      const crtEffects = !s.crtEffects
-      saveSettings({ crtEffects, showCompleted: s.showCompleted })
-      return { crtEffects }
-    }),
+  toggleCrt: () => {
+    // CRT is a per-theme-aware manual pref. Under a universal (clean) theme the overlay is forced off,
+    // so toggling is a no-op. `setCrtOff` dispatches `radar-crt-change` → the init() subscription updates
+    // `crtEffects`, so we don't set it here.
+    if (!themeSupportsCrt(getThemeId())) return
+    setCrtOff(!getCrtOff())
+  },
   toggleShowCompleted: () =>
     set((s) => {
       const showCompleted = !s.showCompleted
-      saveSettings({ crtEffects: s.crtEffects, showCompleted })
+      saveSettings({ showCompleted, neglectedDays: s.neglectedDays })
       return { showCompleted }
+    }),
+  setNeglectedDays: (days) =>
+    set((s) => {
+      const neglectedDays = Math.max(1, Math.round(days))
+      saveSettings({ showCompleted: s.showCompleted, neglectedDays })
+      return { neglectedDays }
     }),
   finishBoot: () => {
     try {
-      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('todoplus.boot', '1')
+      if (typeof sessionStorage !== 'undefined') sessionStorage.setItem('radar.boot', '1')
     } catch {
       /* ignore */
     }
     set({ bootDone: true })
   },
-
-  async addTaskFromParsed(parsed) {
-    // Resolve the project name to an existing project (case-insensitive) or create one.
-    let projectId: string | null = null
-    if (parsed.projectName) {
-      const existing = get().projects.find(
-        (p) => p.name.toLowerCase() === parsed.projectName!.toLowerCase()
-      )
-      projectId = existing ? existing.id : (await get().addProject(parsed.projectName)).id
-    } else if (get().view.kind === 'project') {
-      // Adding from within a project view defaults the task to that project.
-      projectId = (get().view as { kind: 'project'; id: string }).id
+  finishOnboarding: () => {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('radar.onboarded', '1')
+    } catch {
+      /* ignore */
     }
-
-    const task = await window.api.createTask({
-      title: parsed.title || 'Untitled',
-      priority: parsed.priority,
-      projectId,
-      tags: parsed.tags,
-      due: parsed.due
-    })
-    set((s) => ({ tasks: [...s.tasks, task] }))
-    return task
+    set({ onboarded: true })
   },
 
-  async toggleComplete(id) {
-    const task = get().tasks.find((t) => t.id === id)
-    if (!task) return
-    await get().patchTask(id, { completed: !task.completed })
+  async setFields(blipPath, patch) {
+    try {
+      const rec = await window.radar.setFields(blipPath, patch)
+      set((s) => ({ projects: replace(s.projects, rec) }))
+    } catch (e) {
+      await recoverFailedWrite(set, 'setFields', blipPath, e)
+    }
   },
 
-  async patchTask(id, patch) {
-    const updated = await window.api.updateTask(id, patch)
-    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? updated : t)) }))
+  async taskOp(blipPath, op) {
+    try {
+      const rec = await window.radar.task(blipPath, op)
+      set((s) => ({ projects: replace(s.projects, rec) }))
+    } catch (e) {
+      await recoverFailedWrite(set, 'taskOp', blipPath, e)
+    }
   },
 
-  setPriority: (id, priority) => get().patchTask(id, { priority }),
-  setProject: (id, projectId) => get().patchTask(id, { projectId }),
-  setDue: (id, due) => get().patchTask(id, { due }),
+  async handoff(blipPath, lines, next) {
+    try {
+      const rec = await window.radar.handoff(blipPath, lines, next)
+      set((s) => ({ projects: replace(s.projects, rec) }))
+    } catch (e) {
+      await recoverFailedWrite(set, 'handoff', blipPath, e)
+    }
+  },
 
-  async deleteTask(id) {
-    await window.api.deleteTask(id)
+  async setRadarAngle(blipPath, angle) {
+    // Visual-only; a failed write (file vanished, etc.) is harmless.
+    try {
+      await get().setFields(blipPath, { radar_angle: angle })
+    } catch {
+      /* best-effort */
+    }
+  },
+
+  async resetRadarLayout() {
+    const pinned = get().projects.filter((p) => p.radar_angle != null)
+    await Promise.allSettled(pinned.map((p) => get().setFields(p.blipPath, { radar_angle: null })))
+  },
+
+  async capture(raw) {
+    const parsed = parseQuickAdd(raw)
+    if (!parsed.title) return
+    const text = parsed.due ? `${parsed.title} (due ${parsed.due.date.slice(0, 10)})` : parsed.title
+    const match = parsed.projectName
+      ? get().projects.find(
+          (p) => (p.name ?? '').toLowerCase() === parsed.projectName!.toLowerCase()
+        )
+      : undefined
+    if (match) {
+      await get().taskOp(match.blipPath, { action: 'add', text })
+    } else {
+      const rec = await window.radar.inboxAddTask(text)
+      set((s) => ({ projects: replace(s.projects, rec) }))
+    }
+  },
+
+  async addWorkspaceRoot() {
+    const dir = await window.radar.pickFolder()
+    if (!dir) return
+    const config = await window.radar.addRoot(dir)
+    set({ config })
+    // The main process pushes a fresh scan via onProjectsChanged.
+  },
+
+  async removeWorkspaceRoot(root) {
+    const config = await window.radar.removeRoot(root)
+    set({ config })
+  },
+
+  async adoptFolder() {
+    const dir = await window.radar.pickFolder()
+    if (!dir) return
+    const rec = await window.radar.initProject(dir, {})
+    await window.radar.addRoot(dir)
     set((s) => ({
-      tasks: s.tasks.filter((t) => t.id !== id),
-      selectedTaskId: s.selectedTaskId === id ? null : s.selectedTaskId,
-      expandedTaskId: s.expandedTaskId === id ? null : s.expandedTaskId
+      projects: replace(s.projects, rec),
+      view: { kind: 'radar' },
+      selectedBlip: rec.blipPath
     }))
   },
 
-  toggleStar(id) {
-    const task = get().tasks.find((t) => t.id === id)
-    if (!task) return Promise.resolve()
-    return get().patchTask(id, { starred: !task.starred })
+  async adoptGhost(project) {
+    const rec = await window.radar.initProject(project.path, { name: project.name })
+    set((s) => ({ projects: replace(s.projects, rec), selectedBlip: rec.blipPath }))
   },
 
-  setNotes: (id, notes) => get().patchTask(id, { notes }),
-
-  addSubtask(id, title) {
-    const task = get().tasks.find((t) => t.id === id)
-    if (!task || !title.trim()) return Promise.resolve()
-    const next: Subtask[] = [
-      ...task.subtasks,
-      { id: crypto.randomUUID(), title: title.trim(), completed: false }
-    ]
-    return get().patchTask(id, { subtasks: next })
+  async dismissProject(project) {
+    // Await the write first, then update — so a stale IPC channel fails honestly
+    // (project stays put) instead of vanishing and re-appearing on the next scan.
+    try {
+      const config = await window.radar.ignore(project.path)
+      set((s) => ({
+        projects: s.projects.filter((p) => p.blipPath !== project.blipPath),
+        selectedBlip: s.selectedBlip === project.blipPath ? null : s.selectedBlip,
+        config
+      }))
+    } catch (e) {
+      console.warn('dismiss failed — restart `npm run dev` to load the radar:ignore channel', e)
+    }
   },
 
-  toggleSubtask(id, subId) {
-    const task = get().tasks.find((t) => t.id === id)
-    if (!task) return Promise.resolve()
-    const next = task.subtasks.map((s) =>
-      s.id === subId ? { ...s, completed: !s.completed } : s
-    )
-    return get().patchTask(id, { subtasks: next })
+  archiveProject: (blipPath) => get().setFields(blipPath, { status: 'archived' }),
+
+  async deleteProject(blipPath) {
+    try {
+      await window.radar.deleteProject(blipPath)
+      set((s) => ({
+        projects: s.projects.filter((p) => p.blipPath !== blipPath),
+        selectedBlip: s.selectedBlip === blipPath ? null : s.selectedBlip
+      }))
+    } catch (e) {
+      console.warn('delete failed — restart `npm run dev` to load the radar:delete channel', e)
+    }
   },
 
-  deleteSubtask(id, subId) {
-    const task = get().tasks.find((t) => t.id === id)
-    if (!task) return Promise.resolve()
-    return get().patchTask(id, { subtasks: task.subtasks.filter((s) => s.id !== subId) })
-  },
-
-  snooze: (id, untilISO) => get().patchTask(id, { snoozedUntil: untilISO }),
-  unsnooze: (id) => get().patchTask(id, { snoozedUntil: undefined }),
-
-  async addActivityNote(id, text) {
-    if (!text.trim()) return
-    const updated = await window.api.addActivityNote(id, text.trim())
-    set((s) => ({ tasks: s.tasks.map((t) => (t.id === id ? updated : t)) }))
-  },
-
-  async addProject(name, color) {
-    const project = await window.api.createProject({
-      name,
-      // Auto-pick the least-used palette color so new projects stay distinct.
-      color: color ?? nextProjectColor(get().projects.map((p) => p.color))
-    })
-    set((s) => ({ projects: [...s.projects, project] }))
-    return project
-  },
-
-  async renameProject(id, name) {
-    const updated = await window.api.updateProject(id, { name })
-    set((s) => ({ projects: s.projects.map((p) => (p.id === id ? updated : p)) }))
-  },
-
-  async recolorProject(id, color) {
-    const updated = await window.api.updateProject(id, { color })
-    set((s) => ({ projects: s.projects.map((p) => (p.id === id ? updated : p)) }))
-  },
-
-  async deleteProject(id) {
-    await window.api.deleteProject(id)
-    set((s) => ({
-      projects: s.projects.filter((p) => p.id !== id),
-      // Tasks were re-homed to the Inbox in the main process.
-      tasks: s.tasks.map((t) => (t.projectId === id ? { ...t, projectId: null } : t)),
-      view: s.view.kind === 'project' && s.view.id === id ? { kind: 'today' } : s.view
-    }))
+  async restoreProject(path) {
+    const config = await window.radar.unignore(path)
+    set({ config })
   }
 }))
