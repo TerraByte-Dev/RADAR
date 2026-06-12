@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/app-icon.png" alt="RADAR" width="104" />
+
 <img src="docs/assets/logo-lockup.png" alt="RADAR — situational awareness for your projects" width="560" />
 
 **A personal project radar. Every project you're building is a blip on the scope.**
@@ -192,5 +194,8 @@ tokens, fonts, reusable classes, the theme registry, and the full radar renderin
 <img src="docs/assets/section-divider.png" alt="" width="100%" />
 
 <div align="center">
+
+<img src="docs/assets/og-image.png" alt="RADAR — every project on the scope. Nothing off the radar." width="100%" />
+
 <sub>TERRABYTE SOLUTIONS · LOCAL · OFFLINE · YOURS</sub>
 </div>
