@@ -15,6 +15,12 @@ desktop radar visualizes it, live.* Phosphor-green on black, local-first, offlin
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-2f2f2f)
 ![Status](https://img.shields.io/badge/status-pre--1.0-orange)
 
+<!--
+  HERO ASSET — drop a capture of the radar here, then uncomment the line below.
+  Suggested: docs/hero.png (or .gif), the radar view at 1180×800 with a few blips + one fleet.
+  ![RADAR — the project radar](docs/hero.png)
+-->
+
 </div>
 
 ---
