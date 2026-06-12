@@ -14,7 +14,6 @@ last_session: 2026-06-11T16:34:30.227Z
 <!-- RADAR-owned checklist. Edited by the app and `radar-blip task ...`. -->
 - [ ] Review the stacked PRs: close-the-loop #11, settings-themes #12, ship-v1 cleanup
 - [x] Free the RADAR repo name: rename or delete the private TerraByte-Dev/RADAR prototype
-- [x] Rename ToDoPlus to RADAR while the repo is still private (update git remote + publish.repo)
 - [ ] Publish radar-blip to npm BEFORE the repo goes public (unclaimed name + the skills' npx -y fallback = squat risk; docs/RELEASING.md)
 - [ ] Merge the stack into PR #10, then PR #10 into main - main must be the real product before going public
 - [ ] Make the repo public, then flip the About repo link
@@ -24,7 +23,7 @@ last_session: 2026-06-11T16:34:30.227Z
 <!-- Append-only. `radar-blip handoff` adds a dated entry; prior entries are never rewritten. -->
 
 ## 2026-06-11 — Tate + Claude
-- Ship-v1 cleanup shipped as draft PR #14 (Closes #13): legacy ToDoPlus stack deleted, RADAR rebrand finished, README/DESIGN/CHANGELOG rewritten, radar-blip publish-ready
+- Ship-v1 cleanup shipped as draft PR #14 (Closes #13): legacy task stack deleted, RADAR rebrand finished, README/DESIGN/CHANGELOG rewritten, radar-blip publish-ready
 - Adopted this repo onto its own radar (this file); full review stack pushed as PRs #10-#14
 - Adversarial review caught a rename blocker: a private TerraByte-Dev/RADAR prototype repo already holds the name (sequencing in docs/RELEASING.md)
 

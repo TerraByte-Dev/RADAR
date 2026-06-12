@@ -4,7 +4,7 @@ _Last updated: 2026-06-11. The resume point for a fresh session._
 
 Read alongside **`CLAUDE.md`** (architecture + routing table + conventions), **`docs/DESIGN.md`**
 (TERRABYTE.SYS skin + the full radar spec), **`docs/BLIP-SCHEMA.md`** (the `BLIP.md` schema of
-record), and **`docs/RELEASING.md`** (publishing). Origin story: `docs/RADAR-PIVOT.md`.
+record), and **`docs/RELEASING.md`** (publishing).
 
 ## What RADAR is
 
@@ -18,13 +18,13 @@ Local-first, offline, no account — you own your state as Markdown.
 **Four invariants (never violate):** name = RADAR / unit = blip · AI-fed never micromanaged ·
 universal (errand → deadline → project → operation) · local-first plain files you own.
 
-It evolved from the ToDoPlus task app and the repo is now **`TerraByte-Dev/RADAR`** (renamed
-2026-06-12; the superseded `RADAR` prototype was moved to `RADAR-prototype`).
+The repo is **`TerraByte-Dev/RADAR`** (the superseded `RADAR` prototype was moved to
+`RADAR-prototype`).
 
 ## Where things stand
 
 - **The whole pivot is a review stack of draft PRs, none merged.** `main` is still the pre-pivot
-  ToDoPlus + the 3 merged polish PRs. The stack, bottom-up:
+  baseline + the 3 merged polish PRs. The stack, bottom-up:
   1. `feat/9-radar-pivot` → **draft PR #10** (Closes #9) — the pivot itself.
   2. `feat/close-the-loop` → **draft PR #11** (git-seeded adopt, deadlines-on-tasks, title-bar chrome).
   3. `feat/settings-themes` → **draft PR #12** (theme engine + tabbed Settings).
@@ -128,7 +128,7 @@ reappearing). **After any main/preload change, fully restart:** close the window
   `lib/taskDue.ts` (`nearestTaskDue`/`drivingTask`/`setTaskDue`). Touch these with tests.
 - The canvas recomputes "now" each frame (live across midnight) and honors `prefers-reduced-motion`.
   Per-task parsing + overdue/neglected derivation run in memoized selectors **off** the rAF loop.
-- **No legacy left:** the old ToDoPlus task store is fully deleted (PR #14). `shared/types.ts` now
+- **No legacy left:** the old task store is fully deleted (PR #14). `shared/types.ts` now
   holds only `Priority`/`DueDate` (quick-add value types), the IPC channel names, and the slim
   `AppApi`. `BLIP.md` is the only data model.
 
@@ -159,8 +159,8 @@ CRT family are excellent.
 **The whole pivot is built, cleaned, and waiting on review.** The highest-leverage move now is not
 more code: review the PR stack (#10 ← #11 ← #12 ← #14 ← #16), merge it down, then run the v1 release
 prereqs that only Tate can do — **publish `radar-blip` to npm** (guarded by `prepublishOnly`),
-**make the repo public** (the ToDoPlus → RADAR rename is done; `About.tsx` + the GitHub description
-now say RADAR), and **code-signing** (`docs/RELEASING.md`). Then dogfood mornings against the real
+**make the repo public** (the rename to RADAR is done; `About.tsx` + the GitHub description now say
+RADAR), and **code-signing** (`docs/RELEASING.md`). Then dogfood mornings against the real
 portfolio (memory:
 `radar-spine-dogfood-the-loop`). After that, pick from the **Standing UX backlog** below.
 

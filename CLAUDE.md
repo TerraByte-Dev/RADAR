@@ -9,8 +9,7 @@ that project's task checklist + session log. Wears the **TERRABYTE.SYS** Y2K ter
 phosphor-green skin. Electron + React + TypeScript, **local-first, offline, no account** — you own
 your state as Markdown files.
 
-> Evolved from the ToDoPlus task app (see `docs/RADAR-PIVOT.md`); the repo was renamed
-> ToDoPlus → **RADAR** (2026-06-12). Four invariants: **name = RADAR / unit = blip · AI-fed never
+> Repo: **`TerraByte-Dev/RADAR`**. Four invariants: **name = RADAR / unit = blip · AI-fed never
 > micromanaged · universal · local-first plain files you own.**
 
 ## Monorepo
@@ -29,7 +28,7 @@ npm workspaces. The bulletproof `BLIP.md` engine is vendored as a package and bu
 |---|---|---|
 | Main process | `src/main/index.ts` | App lifecycle, **frameless** window, window-control IPC, global quick-add hotkey, **auto-update** (packaged only) |
 | BLIP backend | `src/main/store/{projects,config,watch,workspace,selfwrite,gitseed}.ts` | Scan roots for `BLIP.md` (+ ghost repos); **all writes via the engine's `updateBlip`** (optimistic concurrency — an agent CLI write mid-edit is replayed-over, never clobbered); chokidar live-watch with **content-hash self-write echo detection** (sha256 of written bytes, consumed on match — an agent write seconds after an app write is never swallowed); scan pushes are generation-guarded (stale overlapping scans dropped); config (roots + maxDepth + the app-managed workspace), Inbox blip (TOCTOU-safe), git-seeded adopt (repo-config exec neutralized: `-c core.fsmonitor=` etc.). **Only code that touches disk.** Unit-tested (`projects`, `workspace`, `gitseed`, `selfwrite`, `watch` `.test.ts`). |
-| Radar IPC | `src/main/ipc/radar.ts` + `guard.ts` | Registers `radar:*` channels (scan/read/setFields/task/handoff/init/inbox/config/pickFolder/openExternal/reveal/openInEditor) + pushes `radar:projects-changed`. **Every mutating channel validates its path** (`guard.ts`, unit-tested): basename must be `BLIP.md` and resolve under a configured root. `openExternal` allowlists http(s)/mailto (BLIP.md `links:` are untrusted); the editor launch never shell-parses a path. (The legacy ToDoPlus task store is fully deleted — `BLIP.md` is the only data model.) |
+| Radar IPC | `src/main/ipc/radar.ts` + `guard.ts` | Registers `radar:*` channels (scan/read/setFields/task/handoff/init/inbox/config/pickFolder/openExternal/reveal/openInEditor) + pushes `radar:projects-changed`. **Every mutating channel validates its path** (`guard.ts`, unit-tested): basename must be `BLIP.md` and resolve under a configured root. `openExternal` allowlists http(s)/mailto (BLIP.md `links:` are untrusted); the editor launch never shell-parses a path. (The legacy task store is fully deleted — `BLIP.md` is the only data model.) |
 | Preload | `src/preload/index.ts` | Exposes typed **`window.radar`** (project model) + `window.api` (`AppApi`: window controls, quick-add hotkey, platform, version + updates). Types in `index.d.ts`. |
 | Shared types | `src/shared/radar.ts` | `ProjectRecord`, `RadarConfig`, `BlipFieldPatch`, `RadarApi`, `Horizon`/`BlipStatus` (plain types — **no engine import**, so the renderer never pulls in node-only code). IPC channel names in `src/shared/types.ts`. |
 | Renderer entry | `src/renderer/src/{main,App}.tsx` | `main.tsx` imports brand fonts + CSS; `App.tsx` composes TitleBar + Sidebar + view + dialogs + CRT/Boot/Onboarding overlays. Default `view` is `radar`. |

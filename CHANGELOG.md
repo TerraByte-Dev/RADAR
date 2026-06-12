@@ -6,8 +6,7 @@ until it stabilizes.
 
 ## [Unreleased]
 
-The first RADAR release — evolved from the ToDoPlus task app
-(origin story: `docs/RADAR-PIVOT.md`).
+The first RADAR release.
 
 ### Added
 
@@ -37,7 +36,7 @@ The first RADAR release — evolved from the ToDoPlus task app
 
 ### Removed
 
-- The legacy ToDoPlus task stack (JSON task store, task CRUD IPC, task-grained types and
+- The legacy task stack (JSON task store, task CRUD IPC, task-grained types and
   helpers). Project state lives exclusively in per-project `BLIP.md` files you own.
 
 ### Fixed

@@ -72,12 +72,12 @@ This uploads the installers + the `latest*.yml` update manifests to a GitHub Rel
 1. ~~**Free the RADAR repo name.**~~ ✅ Done 2026-06-12 — the old prototype was renamed to
    `TerraByte-Dev/RADAR-prototype` (still private; delete it via the GitHub UI or a token with
    `delete_repo` scope when convenient).
-2. ~~**Rename `TerraByte-Dev/ToDoPlus` → `RADAR`.**~~ ✅ Done 2026-06-12 — the repo, the local git
-   remote, `About.tsx`, and the GitHub description all say RADAR. (`electron-builder.yml` →
-   `publish.repo` already matched.) The repo is **still private**.
+2. ~~**Rename the repo to `RADAR`.**~~ ✅ Done 2026-06-12 — the repo, the local git remote,
+   `About.tsx`, and the GitHub description all say RADAR. (`electron-builder.yml` → `publish.repo`
+   already matched.) The repo is **still private**.
 3. **`npm publish` `radar-blip`** (see above; `prepublishOnly` guards the build). Confirm the name
    is still available right before publishing: `npm view radar-blip`.
-4. **Merge the PR stack so `main` is the real product.** Going public with the pre-pivot ToDoPlus
+4. **Merge the PR stack so `main` is the real product.** Going public with the pre-pivot
    `main` — and no `LICENSE` on `main` — is a blocker.
 5. **Make the repo public.** The package's repository/homepage links now resolve.
 6. **Set the GitHub social preview** (Settings → General → Social preview → upload
