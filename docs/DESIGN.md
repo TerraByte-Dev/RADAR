@@ -184,10 +184,14 @@ IPC (`window:minimize|maximize|close`) handled in `src/main/index.ts`. Drag regi
 
 ## Brand mark
 
-The TerraByte globe-sword mark is a **monochrome mint (`#00E5A0`) on transparent** PNG:
-`src/renderer/src/assets/logo.png` (imported by `Sidebar` + `BootSplash`, both rendered with a
-phosphor `drop-shadow` and `mix-blend-mode: screen` for glow — the transparent background means the
-blend is cosmetic, not load-bearing) and `build/icon.png` (the runtime window icon, set in
-`main/index.ts`). The Windows installer/exe uses a multi-size **`build/icon.ico`** (256/128/64/48/32/16,
-wired in `electron-builder.yml`). All three are regenerable from a single source mark with ImageMagick
-(`-transparent "#050A08"` → resize / `-define icon:auto-resize`).
+Two marks, deliberately:
+
+- **The OS app icon** (taskbar, installer, window) is the **RADAR scope** — a phosphor sweep on a
+  dark squircle: `build/icon.png` (1024², the runtime window icon set in `main/index.ts`) and the
+  multi-size **`build/icon.ico`** (256/128/96/64/48/32/16, wired in `electron-builder.yml`,
+  regenerated with `magick icon.png -define icon:auto-resize=...`). The same scope drives the README
+  art in `docs/assets/` (`logo-lockup`, `hero`, `og-image`, `section-divider`).
+- **The in-app logotype** in the `Sidebar` + `BootSplash` is still the legacy TerraByte globe-sword
+  (`src/renderer/src/assets/logo.png`, monochrome mint `#00E5A0` on transparent, rendered with a
+  phosphor `drop-shadow` + `mix-blend-mode: screen`). Swapping it to the radar scope is an open,
+  optional follow-up — the tiny sidebar size is where the globe-sword still reads more cleanly.

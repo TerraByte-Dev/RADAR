@@ -30,6 +30,8 @@ The first RADAR release — evolved from the ToDoPlus task app
   Settings (Appearance / Radar / Workspace / Keyboard / Data / About), settings export/import,
   in-app auto-update flow.
 - **TERRABYTE.SYS skin**: frameless window, BIOS boot splash, CRT overlay, phosphor glow.
+- **RADAR brand art**: the radar-scope app icon (taskbar/installer/window, multi-size `.ico`) and
+  the README masthead/hero/divider/social-preview assets (`docs/assets/`).
 - A renderer **error boundary**: a crash in one view degrades gracefully instead of blanking
   the whole app.
 

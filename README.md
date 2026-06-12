@@ -1,6 +1,6 @@
 <div align="center">
 
-# RADAR//SYS
+<img src="docs/assets/logo-lockup.png" alt="RADAR — situational awareness for your projects" width="560" />
 
 **A personal project radar. Every project you're building is a blip on the scope.**
 
@@ -15,15 +15,13 @@ desktop radar visualizes it, live.* Phosphor-green on black, local-first, offlin
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux-2f2f2f)
 ![Status](https://img.shields.io/badge/status-pre--1.0-orange)
 
-<!--
-  HERO ASSET — drop a capture of the radar here, then uncomment the line below.
-  Suggested: docs/hero.png (or .gif), the radar view at 1180×800 with a few blips + one fleet.
-  ![RADAR — the project radar](docs/hero.png)
--->
+<br />
+
+<img src="docs/assets/hero.png" alt="The RADAR scope — every project plotted as a blip, placed by its deadline" width="100%" />
 
 </div>
 
----
+<img src="docs/assets/section-divider.png" alt="" width="100%" />
 
 ## Why
 
@@ -90,6 +88,8 @@ A live CRT scope (the default view) where:
 - **TERRABYTE.SYS skin** — BIOS boot sequence, CRT scanlines/vignette/flicker, phosphor glow,
   frameless window with a custom title bar. Same family as
   [`TerraPlayer`](https://github.com/TerraByte-Dev/TerraPlayer).
+
+<img src="docs/assets/section-divider.png" alt="" width="100%" />
 
 ## The /blip loop
 
@@ -189,7 +189,7 @@ reports: [`.github/SECURITY.md`](.github/SECURITY.md).
 The phosphor CRT skin + the theme engine are documented in [`docs/DESIGN.md`](docs/DESIGN.md) —
 tokens, fonts, reusable classes, the theme registry, and the full radar rendering spec.
 
----
+<img src="docs/assets/section-divider.png" alt="" width="100%" />
 
 <div align="center">
 <sub>TERRABYTE SOLUTIONS · LOCAL · OFFLINE · YOURS</sub>

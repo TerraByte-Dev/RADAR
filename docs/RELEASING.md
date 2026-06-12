@@ -78,8 +78,11 @@ This uploads the installers + the `latest*.yml` update manifests to a GitHub Rel
 4. **Merge the PR stack so `main` is the real product.** Going public with the pre-pivot ToDoPlus
    `main` — and no `LICENSE` on `main` — is a blocker.
 5. **Make the repo public.** The package's repository/homepage links now resolve.
-6. **Flip `About.tsx`'s repo link** to the renamed public repo.
-7. **Code-sign the installers.** Windows (Authenticode) and macOS (Developer ID + notarization)
+6. **Set the GitHub social preview** (Settings → General → Social preview → upload
+   `docs/assets/og-image.png`). This is the card shown when the repo is shared on social/chat — it
+   can't be set via the API, so it's a manual upload.
+7. **Flip `About.tsx`'s repo link** to the renamed public repo.
+8. **Code-sign the installers.** Windows (Authenticode) and macOS (Developer ID + notarization)
    certificates are required for installs that don't warn, and for macOS auto-update to work at
    all. CI injects them via the standard electron-builder env vars (`CSC_LINK`/
    `CSC_KEY_PASSWORD`, `APPLE_*`).
