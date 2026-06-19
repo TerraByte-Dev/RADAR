@@ -541,6 +541,15 @@ export function RadarView(): JSX.Element {
                 drawShip(ctx!, x + Math.cos(a) * rin, y + Math.sin(a) * rin, 2.5, sc)
               }
             }
+            // Overflow: open tasks beyond the 7 drawn ships collapse into a "+N" badge at center.
+            const hidden = openTasks - m
+            if (hidden > 0) {
+              ctx!.fillStyle = color
+              ctx!.font = '7px "IBM Plex Mono", ui-monospace, monospace'
+              ctx!.textAlign = 'center'
+              ctx!.textBaseline = 'middle'
+              ctx!.fillText(`+${hidden}`, x, y)
+            }
           } else {
             // A single craft (no tasks) — a solid blip.
             ctx!.beginPath()

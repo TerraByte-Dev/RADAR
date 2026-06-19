@@ -49,6 +49,7 @@ export function ProjectDetail({
   onClose: () => void
 }): JSX.Element {
   const { setFields, taskOp, adoptGhost } = useStore.getState()
+  const showCompleted = useStore((s) => s.showCompleted)
   const [newTask, setNewTask] = useState('')
   const p = project
   const log = parseSessionLog(p.sessionLog)
@@ -229,6 +230,7 @@ export function ProjectDetail({
             </Label>
             <div className="flex flex-col">
               {p.tasks.map((t, i) => {
+                if (!showCompleted && t.done) return null
                 const due = t.done ? null : taskDueDate(t.text)
                 const urg = due ? urgencyForDue(due) : null
                 return (

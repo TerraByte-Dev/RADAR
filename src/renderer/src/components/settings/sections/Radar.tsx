@@ -1,5 +1,5 @@
 import { useStore } from '../../../store/useStore'
-import { Section, SettingRow, SegmentedControl, useSettings } from '../primitives'
+import { Section, SettingRow, SegmentedControl, Toggle, useSettings } from '../primitives'
 
 const NEGLECT_OPTIONS = [
   { id: '14', label: '14d' },
@@ -8,11 +8,12 @@ const NEGLECT_OPTIONS = [
   { id: '90', label: '90d' }
 ]
 
-/** Radar behavior knobs — currently the neglected-projects threshold. */
+/** Radar behavior knobs — the neglected-projects threshold and task-list display. */
 export default function Radar(): JSX.Element {
   const { markSaved } = useSettings()
   const neglectedDays = useStore((s) => s.neglectedDays)
-  const { setNeglectedDays } = useStore.getState()
+  const showCompleted = useStore((s) => s.showCompleted)
+  const { setNeglectedDays, toggleShowCompleted } = useStore.getState()
 
   // Snap the stored value onto the nearest preset for the segmented control's active state.
   const current = NEGLECT_OPTIONS.reduce((best, o) =>
@@ -22,8 +23,8 @@ export default function Radar(): JSX.Element {
   return (
     <Section
       title="Behavior"
-      description="How the radar flags projects that need attention."
-      keywords="radar behavior neglected stale threshold attention safety net days"
+      description="How the radar flags projects that need attention, and how task lists display."
+      keywords="radar behavior neglected stale threshold attention safety net days completed tasks"
     >
       <SettingRow
         label="Neglected after"
@@ -37,6 +38,21 @@ export default function Radar(): JSX.Element {
             setNeglectedDays(Number(id))
             markSaved()
           }}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Show completed tasks"
+        help="When off, checked-off tasks are hidden from a project's task list in the detail panel (the count still includes them)."
+        keywords="show completed done tasks hide checklist detail panel"
+      >
+        <Toggle
+          checked={showCompleted}
+          onChange={() => {
+            toggleShowCompleted()
+            markSaved()
+          }}
+          labelOn="Shown"
+          labelOff="Hidden"
         />
       </SettingRow>
     </Section>
