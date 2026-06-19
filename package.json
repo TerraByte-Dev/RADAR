@@ -10,6 +10,11 @@
     "packages/*"
   ],
   "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "predev": "node scripts/doctor.mjs",
+    "prebuild": "node scripts/doctor.mjs",
+    "pretest": "node scripts/doctor.mjs",
+    "prepackage": "node scripts/doctor.mjs",
     "dev": "npm run build:core && electron-vite dev",
     "build": "npm run build:core && electron-vite build",
     "start": "electron-vite preview",
