@@ -1,6 +1,6 @@
 # RADAR — Session Handoff
 
-_Last updated: 2026-06-11. The resume point for a fresh session._
+_Last updated: 2026-06-19. The resume point for a fresh session._
 
 Read alongside **`CLAUDE.md`** (architecture + routing table + conventions), **`docs/DESIGN.md`**
 (TERRABYTE.SYS skin + the full radar spec), **`docs/BLIP-SCHEMA.md`** (the `BLIP.md` schema of
@@ -23,17 +23,17 @@ The repo is **`TerraByte-Dev/RADAR`** (the superseded `RADAR` prototype was move
 
 ## Where things stand
 
-- **The whole pivot is a review stack of draft PRs, none merged.** `main` is still the pre-pivot
-  baseline + the 3 merged polish PRs. The stack, bottom-up:
-  1. `feat/9-radar-pivot` → **draft PR #10** (Closes #9) — the pivot itself.
-  2. `feat/close-the-loop` → **draft PR #11** (git-seeded adopt, deadlines-on-tasks, title-bar chrome).
-  3. `feat/settings-themes` → **draft PR #12** (theme engine + tabbed Settings).
-  4. `chore/13-ship-v1` → **draft PR #14** (Closes #13) — the ship-v1 cleanup (legacy stack deleted,
-     RADAR rebrand finished, README/DESIGN rewritten, publish-ready engine, dogfood `BLIP.md`).
-  5. `fix/15-agent-ready-public-prep` → **draft PR #16** (Closes #15) — the pre-public hardening
-     (59-agent adversarial audit → 39 confirmed findings, all fixed: security allowlists + IPC
-     guards, engine round-trip + concurrency bulletproofing, error boundary, launch sequencing).
-  Review top-down or bottom-up, then merge each into its base (merge commits, per convention).
+- **The whole pivot is now MERGED into `main`** (commit `e596122`, "Merge the full RADAR stack into
+  main (PRs #10-#16)"). The five stacked PRs (#10 the pivot; #11 close-the-loop; #12 theme engine +
+  Settings; #14 ship-v1 cleanup; #16 pre-public hardening) all landed in main; the four stale-open
+  PRs **#11/#12/#14/#16** and tracking issues **#13/#15** were **closed 2026-06-19** (their content
+  is already an ancestor of main — do not re-merge).
+- **2026-06-19 — v1.0.0 launch prep (branch `chore/v1-launch`):** repaired the post-move workspace
+  symlink (212 tests green again); added `scripts/doctor.mjs` self-heal guard + GitHub Actions CI
+  (ubuntu+windows); bumped app+engine to **1.0.0** and dated the CHANGELOG; **built the first desktop
+  installer** (`dist/RADAR Setup 1.0.0.exe`, unsigned — boots clean); polished the radar (fleet `+N`
+  overflow badge, functional show-completed toggle). Remaining to ship public (owner-gated): npm
+  publish `radar-blip`, cut the v1.0.0 GitHub Release, flip the repo public. Unsigned for now (certs later).
 - **Gates green:** `npm run typecheck` ✓ · `npm test` **212** (154 app + 58 engine) ✓ ·
   `npm run build` ✓ · dev smoke under `sandbox: true` ✓.
 - **Monorepo (npm workspaces):** `packages/blip-core` = the bulletproof `radar-blip` engine (parse/
