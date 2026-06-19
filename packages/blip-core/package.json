@@ -1,6 +1,6 @@
 {
   "name": "radar-blip",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Own your project state in a plain, git-friendly Markdown file your AI coding agent keeps current. The bulletproof BLIP.md engine + radar-blip CLI behind RADAR.",
   "keywords": [
     "blip",
