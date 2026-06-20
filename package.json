@@ -1,0 +1,63 @@
+{
+  "name": "radar",
+  "version": "1.0.0",
+  "description": "TerraByte RADAR — a personal project radar. Every project is a blip fed by a per-project BLIP.md your AI coding agent keeps current via /blip.",
+  "main": "./out/main/index.js",
+  "author": "TerraByte-Dev",
+  "license": "MIT",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "predev": "node scripts/doctor.mjs",
+    "prebuild": "node scripts/doctor.mjs",
+    "pretest": "node scripts/doctor.mjs",
+    "prepackage": "node scripts/doctor.mjs",
+    "dev": "npm run build:core && electron-vite dev",
+    "build": "npm run build:core && electron-vite build",
+    "start": "electron-vite preview",
+    "package": "npm run build:core && electron-vite build && electron-builder",
+    "build:core": "npm run build --workspace radar-blip",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "npm run build:core && npm run typecheck:node && npm run typecheck:web",
+    "test": "npm run build:core && vitest run && vitest run --root packages/blip-core",
+    "test:core": "npm run build:core && vitest run --root packages/blip-core",
+    "blip": "tsx packages/blip-core/src/cli.ts"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/share-tech-mono": "^5.2.7",
+    "@fontsource/vt323": "^5.2.7",
+    "@radix-ui/react-context-menu": "^2.2.2",
+    "@radix-ui/react-dialog": "^1.1.2",
+    "@radix-ui/react-dropdown-menu": "^2.1.2",
+    "chokidar": "^3.6.0",
+    "chrono-node": "^2.7.7",
+    "cmdk": "^1.0.4",
+    "electron-updater": "^6.3.9",
+    "lucide-react": "^0.460.0",
+    "radar-blip": "*",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "postcss": "^8.4.49",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.15",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.5"
+  }
+}

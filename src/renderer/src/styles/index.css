@@ -1,0 +1,693 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   TERRABYTE.SYS — Y2K terminal design system (RADAR build)
+   Phosphor-green CRT skin shared across TerraByte apps.
+   ============================================================ */
+
+@layer base {
+  /* ============================================================
+     Theme tokens. The base palette is stored as space-separated RGB *channels* so both Tailwind
+     (`rgb(var(--x-rgb) / <alpha-value>)`) and these hand-written classes recolor from one source. The
+     full-color tokens below are DERIVED from the channels, so a `[data-theme]` block only has to swap the
+     base channels (+ a few specifics) to recolor the entire app — see lib/theme.ts + the blocks at the
+     bottom of this file. `:root` IS the default `terrabyte` (phosphor-green) theme; it has no override block.
+     ============================================================ */
+  :root {
+    color-scheme: dark;
+
+    /* ── Base palette — RGB channels (the only thing a theme overrides) ── */
+    --phosphor-rgb: 0 255 136;
+    --phosphor-bright-rgb: 124 255 107;
+    --phosphor-dim-rgb: 31 94 58;
+    --ink-rgb: 155 245 184;
+    --bg-rgb: 0 0 0;
+    --panel-rgb: 2 5 3;
+    --panel-lite-rgb: 4 9 10;
+    --hover-rgb: 10 22 17;
+    --lcd-rgb: 2 10 5;
+    --term-cyan-rgb: 0 229 255;
+    --term-amber-rgb: 255 176 0;
+    --term-magenta-rgb: 255 46 154;
+    --term-red-rgb: 255 48 48;
+
+    /* ── Full-color tokens derived from the channels (used by the classes below) ── */
+    --phosphor: rgb(var(--phosphor-rgb));
+    --phosphor-bright: rgb(var(--phosphor-bright-rgb));
+    --phosphor-dim: rgb(var(--phosphor-dim-rgb));
+    --phosphor-ink: rgb(var(--ink-rgb));
+    --phosphor-faint: rgb(var(--phosphor-rgb) / 0.2);
+    --phosphor-veil: rgb(var(--phosphor-rgb) / 0.08);
+
+    --bg: rgb(var(--bg-rgb));
+    --panel: rgb(var(--panel-rgb));
+    --panel-lite: rgb(var(--panel-lite-rgb));
+    --lcd: rgb(var(--lcd-rgb));
+    --rule: rgb(var(--phosphor-rgb) / 0.18);
+    --rule-dim: rgb(var(--phosphor-rgb) / 0.08);
+    --ink: rgb(var(--ink-rgb));
+    --ink-dim: rgb(var(--ink-rgb) / 0.58);
+    --ink-faint: rgb(var(--ink-rgb) / 0.32);
+
+    --term-cyan: rgb(var(--term-cyan-rgb));
+    --term-amber: rgb(var(--term-amber-rgb));
+    --term-magenta: rgb(var(--term-magenta-rgb));
+    --term-red: rgb(var(--term-red-rgb));
+
+    --font-display: 'VT323', 'Share Tech Mono', monospace;
+    --font-mono: 'IBM Plex Mono', 'Share Tech Mono', monospace;
+    --font-lcd: 'Share Tech Mono', 'VT323', monospace;
+    --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+    --crt-scanline-opacity: 0.05;
+    --crt-vignette-opacity: 0.42;
+    --crt-noise-opacity: 0.02;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-mono);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  ::selection {
+    background: var(--phosphor);
+    color: #000;
+  }
+
+  /* Phosphor scrollbars with a faint glow. */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--phosphor-rgb) / 0.18);
+    border-radius: 0;
+    box-shadow: 0 0 4px rgb(var(--phosphor-rgb) / 0.25);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--phosphor-rgb) / 0.38);
+  }
+
+  button {
+    font: inherit;
+  }
+
+  /* LCD-style range sliders (used by future timers / progress). */
+  input[type='range'] {
+    -webkit-appearance: none;
+    background: transparent;
+  }
+  input[type='range']::-webkit-slider-runnable-track {
+    height: 2px;
+    background: rgb(var(--phosphor-rgb) / 0.18);
+  }
+  input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 8px;
+    height: 12px;
+    background: var(--phosphor-ink);
+    border: 1px solid rgba(0, 0, 0, 0.5);
+    border-radius: 0;
+    box-shadow: 0 0 6px rgb(var(--phosphor-rgb) / 0.6);
+    margin-top: -5px;
+    cursor: pointer;
+  }
+}
+
+@layer components {
+  /* Frameless-window drag regions. */
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* ── CRT effect layers (fixed full-viewport overlay) ── */
+  /* z-30 sits above the app shell (sidebar/content/titlebar) but BELOW the
+     Radix/cmdk dialogs (overlay z-40, content z-50) so modals stay crisp. */
+  .crt-stack {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 30;
+  }
+  /* The single CRT source of truth: the theme engine toggles `html.crt-off` (universal themes +
+     the manual toggle), which hides the whole CRT overlay AND the terminal grid for a flat, clean look. */
+  html.crt-off .crt-stack,
+  html.crt-off .term-grid-bg {
+    display: none;
+  }
+  .crt-scanlines {
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      180deg,
+      transparent 0 2px,
+      rgb(var(--phosphor-rgb) / var(--crt-scanline-opacity)) 2px 3px
+    );
+    mix-blend-mode: screen;
+  }
+  .crt-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 110% 90% at 50% 50%,
+      transparent 55%,
+      rgba(0, 0, 0, var(--crt-vignette-opacity)) 100%
+    );
+  }
+  .crt-noise {
+    position: absolute;
+    inset: 0;
+    opacity: var(--crt-noise-opacity);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2.4' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.7'/%3E%3C/svg%3E");
+  }
+  .crt-flicker {
+    position: absolute;
+    inset: 0;
+    background: rgb(var(--phosphor-rgb) / 0.02);
+    animation: flicker 6s steps(60) infinite;
+    mix-blend-mode: screen;
+  }
+  @keyframes flicker {
+    0%, 96%, 100% { opacity: 1; }
+    97% { opacity: 0.85; }
+    98% { opacity: 1.05; }
+    99% { opacity: 0.92; }
+  }
+
+  /* Vector grid that sits behind app content. */
+  .term-grid-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 32px, rgb(var(--phosphor-rgb) / 0.045) 32px 33px),
+      repeating-linear-gradient(90deg, transparent 0 32px, rgb(var(--phosphor-rgb) / 0.045) 32px 33px);
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, black 30%, transparent 80%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, black 30%, transparent 80%);
+  }
+  .term-grid {
+    background:
+      repeating-linear-gradient(0deg, transparent 0 23px, rgb(var(--phosphor-rgb) / 0.07) 23px 24px),
+      repeating-linear-gradient(90deg, transparent 0 23px, rgb(var(--phosphor-rgb) / 0.07) 23px 24px),
+      #020503;
+    background-size: 24px 24px;
+  }
+  /* Subtle scanline texture for scrollable track surfaces. */
+  .track-scan {
+    background:
+      repeating-linear-gradient(180deg, transparent 0 2px, rgb(var(--phosphor-rgb) / 0.022) 2px 3px),
+      #000;
+  }
+
+  /* Chromatic aberration — apply to tagged text only. */
+  .crt-aberrate {
+    text-shadow:
+      -0.4px 0 rgba(255, 0, 100, 0.3),
+      0.4px 0 rgba(0, 200, 255, 0.3);
+  }
+
+  /* ── Surfaces ── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    position: relative;
+  }
+  .lcd-panel {
+    background:
+      repeating-linear-gradient(0deg, rgb(var(--phosphor-rgb) / 0.05) 0 1px, transparent 1px 2px),
+      radial-gradient(ellipse at top, rgb(var(--phosphor-rgb) / 0.1) 0%, transparent 65%),
+      var(--lcd);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    color: var(--phosphor);
+    font-family: var(--font-lcd);
+    position: relative;
+    overflow: hidden;
+    box-shadow:
+      0 0 14px var(--phosphor-faint),
+      inset 0 0 30px rgba(0, 0, 0, 0.7),
+      inset 0 0 0 1px var(--phosphor-faint);
+  }
+  .lcd-inset {
+    background:
+      repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.25) 0 1px, transparent 1px 3px),
+      var(--lcd);
+    border: 1px solid var(--rule);
+    color: var(--phosphor);
+    caret-color: var(--phosphor);
+    text-shadow: 0 0 4px var(--phosphor-faint);
+  }
+
+  /* ── Phosphor text glow (active items only) ── */
+  .phosphor-glow {
+    text-shadow: 0 0 6px currentColor, 0 0 14px var(--phosphor-faint);
+  }
+
+  /* ── Brushed-metal key / button ── */
+  .metal-key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    color: var(--phosphor-ink);
+    background: linear-gradient(180deg, #16201b 0%, #060a07 100%);
+    border: 1px solid rgb(var(--ink-rgb) / 0.1);
+    box-shadow:
+      inset 0 1px 0 rgb(var(--ink-rgb) / 0.06),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.5),
+      0 1px 0 rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+    transition: color 120ms, border-color 120ms, background 120ms, box-shadow 120ms;
+  }
+  .metal-key:hover {
+    color: var(--phosphor);
+    border-color: rgb(var(--phosphor-rgb) / 0.35);
+  }
+  .metal-key.is-primary {
+    color: var(--phosphor);
+    background: linear-gradient(180deg, rgb(var(--phosphor-rgb) / 0.22) 0%, rgb(var(--phosphor-rgb) / 0.04) 100%);
+    border-color: rgb(var(--phosphor-rgb) / 0.55);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 0 12px rgb(var(--phosphor-rgb) / 0.35),
+      0 1px 0 rgba(0, 0, 0, 0.6);
+  }
+
+  /* ── Pill button (.btn) ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border: 1px solid var(--rule);
+    background: linear-gradient(180deg, #16201b 0%, #060a07 100%);
+    color: var(--ink);
+    cursor: pointer;
+    transition: color 150ms, border-color 150ms, box-shadow 150ms;
+    border-radius: 2px;
+  }
+  .btn:hover {
+    color: var(--phosphor);
+    border-color: var(--phosphor);
+    box-shadow: 0 0 14px var(--phosphor-faint);
+  }
+  .btn-primary {
+    color: var(--phosphor);
+    background: linear-gradient(180deg, var(--phosphor-veil) 0%, rgb(var(--phosphor-rgb) / 0.02) 100%);
+    border-color: var(--phosphor);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 0 14px var(--phosphor-faint);
+  }
+  .btn-primary:hover {
+    color: #000;
+    background: var(--phosphor);
+    box-shadow: 0 0 24px var(--phosphor-faint);
+  }
+
+  /* ── Terminal tag chip ── */
+  .term-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 7px;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--phosphor);
+    border: 1px solid var(--rule);
+    background: var(--phosphor-veil);
+    border-radius: 2px;
+  }
+
+  /* ── Glow line / divider ── */
+  .glow-line {
+    height: 2px;
+    background: var(--phosphor);
+    box-shadow: 0 0 12px var(--phosphor);
+  }
+
+  /* ── Blinking caret + LED ── */
+  .term-caret::after {
+    content: '▮';
+    display: inline-block;
+    margin-left: 2px;
+    color: var(--phosphor);
+    animation: caret 0.8s steps(2) infinite;
+  }
+  @keyframes caret { 50% { opacity: 0; } }
+  @keyframes term-blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+  @keyframes pulse-led { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .led-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--phosphor);
+    box-shadow: 0 0 8px var(--phosphor);
+    animation: pulse-led 1.6s ease-in-out infinite;
+  }
+
+  /* ── Boot sequence ── */
+  .boot-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #000;
+    color: var(--phosphor);
+    font-family: var(--font-display);
+    display: flex;
+    flex-direction: column;
+    padding: 40px 56px;
+    overflow: hidden;
+  }
+  .boot-screen.fade-out {
+    opacity: 0;
+    transition: opacity 0.45s ease;
+    pointer-events: none;
+  }
+  .boot-line {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--font-mono);
+    font-size: clamp(0.8rem, 1.3vw, 1rem);
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+  }
+  .boot-line .ok { color: var(--phosphor); }
+  .boot-line .warn { color: var(--term-amber); }
+  .boot-line .info { color: var(--phosphor-ink); }
+  .boot-line .dim { color: var(--ink-faint); }
+  .boot-skip {
+    position: absolute;
+    right: 24px;
+    top: 24px;
+    background: transparent;
+    color: var(--ink-faint);
+    border: 1px solid var(--rule);
+    padding: 6px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .boot-skip:hover {
+    color: var(--phosphor);
+    border-color: var(--phosphor);
+  }
+  .boot-tickerbar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    gap: 28px;
+    justify-content: center;
+    padding: 10px 24px;
+    border-top: 1px solid var(--rule);
+    background: rgba(0, 0, 0, 0.6);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* ── Boot splash (logotype reveal + glitch) ── */
+  .boot-splash {
+    margin: auto;
+    text-align: center;
+    position: relative;
+    padding: 32px;
+    width: 100%;
+    max-width: min(900px, 100vw - 24px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .splash-frame {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+  }
+  .splash-frame-corner {
+    font-family: var(--font-mono);
+    color: var(--ink-faint);
+    font-size: clamp(0.9rem, 2.4vw, 1.1rem);
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .splash-frame-rule {
+    flex: 1 1 0;
+    height: 0;
+    border-top: 2px double var(--ink-faint);
+    min-width: 12px;
+  }
+  .splash-frame-label {
+    font-family: var(--font-mono);
+    color: var(--ink-faint);
+    font-size: clamp(0.7rem, 2vw, 0.88rem);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .splash-frame.top { margin-bottom: 28px; }
+  .splash-frame.bottom { margin-top: 28px; }
+  .splash-title-wrap {
+    position: relative;
+    display: block;
+    line-height: 1;
+    max-width: 100%;
+  }
+  .splash-title {
+    font-family: var(--font-display);
+    font-size: clamp(2.6rem, 13vw, 9rem);
+    white-space: nowrap;
+    color: var(--phosphor);
+    text-shadow: 0 0 8px var(--phosphor), 0 0 22px var(--phosphor-faint), 0 0 60px var(--phosphor-faint);
+    letter-spacing: 0.04em;
+    position: relative;
+  }
+  .splash-title-r,
+  .splash-title-g {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    text-shadow: none;
+    mix-blend-mode: screen;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .splash-title-r { color: rgba(255, 0, 100, 0.85); }
+  .splash-title-g { color: rgba(0, 200, 255, 0.85); }
+  .splash-tag {
+    margin-top: 16px;
+    font-family: var(--font-display);
+    font-size: clamp(1rem, 1.6vw, 1.4rem);
+    color: var(--phosphor-ink);
+    letter-spacing: 0.18em;
+    text-shadow: 0 0 10px var(--phosphor-faint);
+  }
+  .splash-in .splash-title { animation: splash-scanin 700ms ease-out both; }
+  .splash-in .splash-tag { animation: splash-fadein 500ms 600ms ease-out both; }
+  .splash-in .splash-frame { animation: splash-fadein 350ms 250ms ease-out both; }
+  @keyframes splash-scanin {
+    0% { clip-path: inset(0 0 100% 0); filter: blur(2px) brightness(2); }
+    60% { clip-path: inset(0 0 0 0); filter: blur(1px) brightness(1.6); }
+    100% { clip-path: inset(0 0 0 0); filter: blur(0) brightness(1); }
+  }
+  @keyframes splash-fadein {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .splash-glitch .splash-title { animation: splash-glitch-x 110ms steps(2) infinite; }
+  .splash-glitch .splash-title-r { opacity: 1; animation: splash-glitch-r 90ms steps(2) infinite; }
+  .splash-glitch .splash-title-g { opacity: 1; animation: splash-glitch-g 130ms steps(2) infinite; }
+  @keyframes splash-glitch-x {
+    0% { transform: translate(0, 0); }
+    20% { transform: translate(-3px, 1px); }
+    40% { transform: translate(2px, -1px); clip-path: inset(20% 0 30% 0); }
+    60% { transform: translate(-1px, 0); clip-path: inset(0); }
+    80% { transform: translate(2px, 2px); clip-path: inset(50% 0 0 0); }
+    100% { transform: translate(0, 0); clip-path: inset(0); }
+  }
+  @keyframes splash-glitch-r {
+    0%, 100% { transform: translate(-4px, 0); }
+    50% { transform: translate(-8px, 1px); }
+  }
+  @keyframes splash-glitch-g {
+    0%, 100% { transform: translate(4px, 0); }
+    50% { transform: translate(8px, -1px); }
+  }
+
+  /* Generic entrance for content. */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(8px);
+    animation: fadeIn 0.4s ease forwards;
+  }
+  @keyframes fadeIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+/* ── Respect reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .crt-flicker,
+  .fade-in,
+  .splash-title,
+  .splash-tag,
+  .splash-frame,
+  .led-dot,
+  .term-caret::after {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+}
+
+/* ============================================================
+   THEMES — a theme is just a bundle of CSS-var overrides on <html>. Unlayered (so they beat the layered
+   `:root` defaults); each block swaps only the base channels (+ a few specifics) and every derived token,
+   Tailwind utility, and canvas color recolors for free (the canvas reads these vars at runtime). The
+   default `terrabyte` (phosphor green) is `:root` itself — no block. See lib/theme.ts for the registry.
+   ============================================================ */
+
+/* ── CRT family (keep scanlines + grid + glow; just recolored) ── */
+html[data-theme='ice'] {
+  --phosphor-rgb: 111 230 255;
+  --phosphor-bright-rgb: 168 242 255;
+  --phosphor-dim-rgb: 8 48 63;
+  --ink-rgb: 191 239 255;
+  --bg-rgb: 2 4 12;
+  --panel-rgb: 7 13 22;
+  --panel-lite-rgb: 11 18 29;
+  --lcd-rgb: 3 6 13;
+}
+html[data-theme='amber'] {
+  --phosphor-rgb: 255 176 0;
+  --phosphor-bright-rgb: 255 201 64;
+  --phosphor-dim-rgb: 58 38 0;
+  --ink-rgb: 255 208 116;
+}
+html[data-theme='tangerine'] {
+  --phosphor-rgb: 255 122 24;
+  --phosphor-bright-rgb: 255 162 77;
+  --phosphor-dim-rgb: 42 19 3;
+  --ink-rgb: 255 192 137;
+  --bg-rgb: 6 3 0;
+  --panel-rgb: 12 6 1;
+  --panel-lite-rgb: 17 8 2;
+  --lcd-rgb: 7 3 0;
+}
+html[data-theme='crimson'] {
+  --phosphor-rgb: 255 46 77;
+  --phosphor-bright-rgb: 255 100 119;
+  --phosphor-dim-rgb: 42 6 16;
+  --ink-rgb: 255 148 162;
+  --bg-rgb: 6 1 2;
+  --panel-rgb: 12 3 5;
+  --panel-lite-rgb: 17 4 7;
+  --lcd-rgb: 7 2 3;
+}
+html[data-theme='vapor'] {
+  /* Duotone: pink accent (--phosphor) + cyan body ink (--ink) — classic vaporwave. */
+  --phosphor-rgb: 255 138 216;
+  --phosphor-bright-rgb: 255 179 230;
+  --phosphor-dim-rgb: 42 10 40;
+  --ink-rgb: 147 230 255;
+  --bg-rgb: 7 2 19;
+  --panel-rgb: 13 5 28;
+  --panel-lite-rgb: 17 8 35;
+  --lcd-rgb: 8 2 20;
+}
+html[data-theme='synthwave'] {
+  --phosphor-rgb: 255 58 200;
+  --phosphor-bright-rgb: 255 123 221;
+  --phosphor-dim-rgb: 42 10 40;
+  --ink-rgb: 255 156 230;
+  --bg-rgb: 5 0 12;
+  --panel-rgb: 11 3 22;
+  --panel-lite-rgb: 15 5 28;
+  --lcd-rgb: 5 0 16;
+}
+html[data-theme='ultraviolet'] {
+  --phosphor-rgb: 160 107 255;
+  --phosphor-bright-rgb: 194 160 255;
+  --phosphor-dim-rgb: 26 13 58;
+  --ink-rgb: 201 176 255;
+  --bg-rgb: 5 3 22;
+  --panel-rgb: 11 7 30;
+  --panel-lite-rgb: 15 10 37;
+  --lcd-rgb: 6 4 15;
+}
+
+/* ── Universal family (neutral palette, flat borders; CRT overlay dropped via `crt-off`) ── */
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --phosphor-rgb: 68 147 248;
+  --phosphor-bright-rgb: 106 169 255;
+  --phosphor-dim-rgb: 17 35 63;
+  --ink-rgb: 201 209 217;
+  --bg-rgb: 13 17 23;
+  --panel-rgb: 17 22 29;
+  --panel-lite-rgb: 22 27 34;
+  --lcd-rgb: 11 15 20;
+  /* Flat neutral borders instead of the phosphor-tinted rules. */
+  --rule: #2a313a;
+  --rule-dim: #20262d;
+}
+html[data-theme='light'] {
+  color-scheme: light;
+  --phosphor-rgb: 9 105 218;
+  --phosphor-bright-rgb: 10 92 194;
+  --phosphor-dim-rgb: 221 244 255;
+  --ink-rgb: 31 35 40;
+  --bg-rgb: 255 255 255;
+  --panel-rgb: 246 248 250;
+  --panel-lite-rgb: 238 241 244;
+  --lcd-rgb: 243 246 249;
+  --rule: #d0d7de;
+  --rule-dim: #e6eaef;
+}
+
+/* Universal themes drop the retro text glows + chromatic aberration for flat, maximum-readability chrome. */
+html[data-theme='dark'] .phosphor-glow,
+html[data-theme='light'] .phosphor-glow,
+html[data-theme='dark'] .crt-aberrate,
+html[data-theme='light'] .crt-aberrate {
+  text-shadow: none;
+}
