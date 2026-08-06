@@ -10,6 +10,12 @@ import { runStopHook } from '../dist/hook.js';
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 
+/**
+ * Windows releases a file handle asynchronously, so a temp dir whose transcript we just read
+ * can still be ENOTEMPTY the instant we delete it. Retry rather than flake.
+ */
+const cleanup = (p: string): void => rmSync(p, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+
 const DOC = `---
 name: Sync
 status: active
@@ -124,7 +130,7 @@ describe('CLI: sync', () => {
       expect(after).toContain('- wired sync');
       expect(after).toContain('# Notes\nmine'); // human section untouched
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -136,7 +142,7 @@ describe('CLI: sync', () => {
       expect(out).toContain('Would apply');
       expect(readFileSync(join(dir, 'BLIP.md'), 'utf8')).toBe(DOC);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -153,7 +159,7 @@ describe('CLI: sync', () => {
       expect(err?.status).toBe(1);
       expect(readFileSync(join(dir, 'BLIP.md'), 'utf8')).toBe(DOC);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 
@@ -167,7 +173,7 @@ describe('CLI: sync', () => {
       expect(after).not.toContain('next_action');
       expect(Blip.parse(after).tasks.map((t) => t.text)).toEqual(['flip the repo public', 'later', 'another']);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      cleanup(dir);
     }
   });
 });
@@ -245,8 +251,8 @@ describe('sessions — reading what actually happened', () => {
       expect(d!.skippedBefore).toBe(1); // the May entry predates --since
       expect(formatSessions([d!])).toContain('wrote: src/a.ts');
     } finally {
-      rmSync(home, { recursive: true, force: true });
-      rmSync(proj, { recursive: true, force: true });
+      cleanup(home);
+      cleanup(proj);
     }
   });
 
@@ -289,8 +295,8 @@ describe('sessions — reading what actually happened', () => {
       mkdirSync(bystander);
       expect(await readSessions(bystander, { home })).toEqual([]);
     } finally {
-      rmSync(home, { recursive: true, force: true });
-      rmSync(workspace, { recursive: true, force: true });
+      cleanup(home);
+      cleanup(workspace);
     }
   });
 
@@ -319,8 +325,8 @@ describe('sessions — reading what actually happened', () => {
       expect(found[0]!.scope).toBe('project');
       expect(found[0]!.filesTouched).toEqual(['own.ts']);
     } finally {
-      rmSync(home, { recursive: true, force: true });
-      rmSync(workspace, { recursive: true, force: true });
+      cleanup(home);
+      cleanup(workspace);
     }
   });
 
@@ -329,7 +335,7 @@ describe('sessions — reading what actually happened', () => {
     try {
       expect(await readSessions(process.cwd(), { home })).toEqual([]);
     } finally {
-      rmSync(home, { recursive: true, force: true });
+      cleanup(home);
     }
   });
 });
@@ -383,8 +389,8 @@ describe('Stop hook — nudge only when it earns it', () => {
       // …but only once per session, so it can never loop.
       expect(await run({ session_id: id, cwd: proj, stop_hook_active: false }, home)).toBeNull();
     } finally {
-      rmSync(home, { recursive: true, force: true });
-      rmSync(proj, { recursive: true, force: true });
+      cleanup(home);
+      cleanup(proj);
     }
   });
 
@@ -393,8 +399,8 @@ describe('Stop hook — nudge only when it earns it', () => {
     try {
       expect(await run({ session_id: sid('synced'), cwd: proj, stop_hook_active: false }, home)).toBeNull();
     } finally {
-      rmSync(home, { recursive: true, force: true });
-      rmSync(proj, { recursive: true, force: true });
+      cleanup(home);
+      cleanup(proj);
     }
   });
 
@@ -404,14 +410,14 @@ describe('Stop hook — nudge only when it earns it', () => {
       expect(await run({ session_id: sid('quiet'), cwd: shallow.proj, stop_hook_active: false }, shallow.home)).toBeNull();
       expect(await run({ session_id: sid('reentry'), cwd: shallow.proj, stop_hook_active: true }, shallow.home)).toBeNull();
     } finally {
-      rmSync(shallow.home, { recursive: true, force: true });
-      rmSync(shallow.proj, { recursive: true, force: true });
+      cleanup(shallow.home);
+      cleanup(shallow.proj);
     }
     const bare = mkdtempSync(join(tmpdir(), 'radar-untracked-'));
     try {
       expect(await run({ session_id: sid('untracked'), cwd: bare, stop_hook_active: false })).toBeNull();
     } finally {
-      rmSync(bare, { recursive: true, force: true });
+      cleanup(bare);
     }
     // Unparseable input: stay out of the way rather than guess. (A payload with no `cwd` is a
     // different case — it legitimately falls back to the process's cwd, which the hook runs in.)
@@ -424,8 +430,8 @@ describe('Stop hook — nudge only when it earns it', () => {
       writeFileSync(join(proj, 'BLIP.md'), `---\nname: "unterminated\n---\n\n# Tasks\n`, 'utf8');
       expect(await run({ session_id: sid('broken'), cwd: proj, stop_hook_active: false }, home)).toBeNull();
     } finally {
-      rmSync(home, { recursive: true, force: true });
-      rmSync(proj, { recursive: true, force: true });
+      cleanup(home);
+      cleanup(proj);
     }
   });
 });

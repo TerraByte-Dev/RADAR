@@ -228,8 +228,10 @@ async function digestFile(
       }
     }
   } finally {
+    // `destroy`, not `close`: readline's close leaves the fd open, and on Windows a lingering
+    // handle blocks the directory from being removed by whoever owns it.
     rl.close();
-    stream.close();
+    stream.destroy();
   }
   return d;
 }
