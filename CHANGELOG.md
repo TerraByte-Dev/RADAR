@@ -6,6 +6,40 @@ until it stabilizes.
 
 ## [Unreleased]
 
+## [2.0.1] — 2026-08-06
+
+### Fixed
+
+- **Auto-update never worked — in any release.** `registerUpdates` did
+  `import('electron-updater').then(({ autoUpdater }) => …)`, but electron-updater installs
+  `autoUpdater` as a lazy getter on `module.exports`
+  (`Object.defineProperty(exports, 'autoUpdater', { get: … })`). Node's CJS→ESM named-export
+  detection (cjs-module-lexer) cannot see that getter shape, so the namespace has **no**
+  `autoUpdater` key: the destructure yielded `undefined` and the very next statement
+  (`autoUpdater.autoDownload = false`) threw — *before any listener was attached*, including
+  the `error` one. The result was a check that reported nothing at all: no update, no
+  up-to-date, no error, spinner forever. Deterministic, and present since v1.0.0.
+  Verified under real Electron 33 / Node 20.18, and in the shipped `app.asar` of both 1.0.0
+  and 2.0.0. Resolution now goes through `resolveAutoUpdater`, which falls back to
+  `default.autoUpdater` (`module.exports`) and throws loudly rather than returning `undefined`.
+  > Anyone on **1.0.0 or 2.0.0 must install 2.0.1 by hand once** — the code that fetches
+  > updates is inside the broken binary, so no published release can reach it. From 2.0.1
+  > onward the updater works.
+- **An update failure could strand the UI on "scanning…"** — a rejected `invoke` is the one
+  failure that never arrives on the event channel. Both `check()` and `download()` now catch it,
+  and the main-process handlers report load failures the updater cannot report itself.
+- **A stalled connection would wedge every later check for the process's lifetime.**
+  electron-updater's HTTP timeout hooks `request.on('socket')`, which Electron's
+  `net.ClientRequest` never emits, and `AppUpdater` caches its in-flight check promise until it
+  settles. Checks are now bounded at 30 s.
+
+### Added
+
+- **An updater log** at `<userData>/logs/updater.log` (~25 lines, no new dependency). The bug
+  above was invisible for six weeks precisely because nothing recorded it — and note that
+  `autoUpdater.logger` alone would *still* have recorded nothing, since the failure was in the
+  code that assigns the logger. This wraps the `import()` itself.
+
 ### Security
 
 - **`radar-blip sessions` redaction missed several common credential shapes** — npm

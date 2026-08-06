@@ -78,16 +78,28 @@ export default function About(): JSX.Element {
     })
   }, [])
 
+  // A rejected `invoke` is the one failure that never arrives on the `update:event` channel, so it
+  // must be caught here — otherwise the pane is stranded on 'checking' forever with nothing shown.
   const check = async (): Promise<void> => {
     setStatus('checking')
     setErrorMsg('')
-    const r = await window.api.checkForUpdates()
-    if (r.devMode) setStatus('dev-mode')
+    try {
+      const r = await window.api.checkForUpdates()
+      if (r.devMode) setStatus('dev-mode')
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : String(e))
+      setStatus('error')
+    }
   }
-  const download = (): void => {
+  const download = async (): Promise<void> => {
     setStatus('downloading')
     setProgress(0)
-    window.api.downloadUpdate()
+    try {
+      await window.api.downloadUpdate()
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : String(e))
+      setStatus('error')
+    }
   }
 
   const btn =
