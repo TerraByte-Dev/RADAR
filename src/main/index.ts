@@ -2,6 +2,7 @@ import { app, BrowserWindow, globalShortcut, ipcMain, session, shell } from 'ele
 import { join } from 'node:path'
 import { IPC, type UpdateEvent } from '../shared/types'
 import { registerRadarHandlers } from './ipc/radar'
+import { resolveAutoUpdater, updateLog } from './updater'
 
 const isDev = !app.isPackaged
 
@@ -100,8 +101,14 @@ function registerUpdates(getWindow: () => BrowserWindow | null): void {
     return
   }
 
-  const updater = import('electron-updater').then(({ autoUpdater }) => {
-    const send = (event: UpdateEvent): void => getWindow()?.webContents.send(IPC.updateEvent, event)
+  const send = (event: UpdateEvent): void => getWindow()?.webContents.send(IPC.updateEvent, event)
+
+  const updater = import('electron-updater').then((mod) => {
+    // NOT `.then(({ autoUpdater }) => …)` — that destructure is always `undefined`. See updater.ts.
+    const autoUpdater = resolveAutoUpdater(mod)
+
+    autoUpdater.logger = updateLog
+    updateLog.info(`updater ready — RADAR ${app.getVersion()}, electron ${process.versions.electron}`)
     autoUpdater.autoDownload = false
     autoUpdater.on('update-available', (info) => send({ type: 'available', version: info.version }))
     autoUpdater.on('update-not-available', () => send({ type: 'not-available' }))
@@ -113,21 +120,53 @@ function registerUpdates(getWindow: () => BrowserWindow | null): void {
     return autoUpdater
   })
 
+  // Failing to load the updater at all is the one error electron-updater can never report itself
+  // (its `error` listeners are attached inside the callback that threw). Record it, and surface it.
+  const fail = (e: unknown): void => {
+    updateLog.error(e)
+    send({ type: 'error', message: e instanceof Error ? e.message : String(e ?? 'unknown error') })
+  }
+  updater.catch(fail)
+
+  // electron-updater has no working HTTP timeout under Electron: HttpExecutor.addTimeOutHandler
+  // hooks `request.on('socket')`, and electron's net.ClientRequest never emits `socket`. Combined
+  // with AppUpdater caching `checkForUpdatesPromise` until it settles, one stalled connection would
+  // wedge every later check for the life of the process — the same silent-spinner signature.
+  const CHECK_TIMEOUT_MS = 30_000
+  const bounded = <T>(p: Promise<T>): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('update check timed out')), CHECK_TIMEOUT_MS).unref?.()
+      )
+    ])
+
   ipcMain.handle(IPC.updateCheck, async () => {
-    const autoUpdater = await updater
-    await autoUpdater.checkForUpdates()
+    try {
+      const autoUpdater = await updater
+      await bounded(autoUpdater.checkForUpdates())
+    } catch (e) {
+      fail(e)
+    }
     return { devMode: false }
   })
   ipcMain.handle(IPC.updateDownload, async () => {
-    const autoUpdater = await updater
-    await autoUpdater.downloadUpdate()
+    try {
+      const autoUpdater = await updater
+      await autoUpdater.downloadUpdate()
+    } catch (e) {
+      fail(e)
+    }
   })
   ipcMain.on(IPC.updateInstall, () => {
-    updater.then((autoUpdater) => autoUpdater.quitAndInstall()).catch(() => {})
+    updater.then((autoUpdater) => autoUpdater.quitAndInstall()).catch(fail)
   })
 
   // Initial silent check on launch (replaces the old checkForUpdatesAndNotify()).
-  updater.then((autoUpdater) => autoUpdater.checkForUpdates()).catch(() => {})
+  updater.then((autoUpdater) => bounded(autoUpdater.checkForUpdates())).catch(() => {
+    // Already reported: a load failure by `updater.catch(fail)` above, a check failure by
+    // electron-updater's own `error` event + logger. Nothing to add, but the chain needs a sink.
+  })
 }
 
 /** Strict CSP for the packaged app. Skipped in dev so Vite HMR works. */

@@ -1,6 +1,6 @@
 {
   "name": "radar",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "TerraByte RADAR — a personal project radar. Every project is a blip fed by a per-project BLIP.md your AI coding agent keeps current via /blip.",
   "main": "./out/main/index.js",
   "author": "TerraByte-Dev",

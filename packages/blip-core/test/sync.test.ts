@@ -211,6 +211,28 @@ describe('sessions — reading what actually happened', () => {
     expect(redact('export GH=ghp_0123456789abcdefghijABCDEFGHIJ')).toContain('«redacted»');
   });
 
+  it('redacts every credential shape an agent plausibly pastes into a shell', () => {
+    // This matters more here than in most tools: a digest is fed to a model, which may quote it
+    // into a `# Session log` that gets committed. A missed pattern is a credential in a repo.
+    const secrets = [
+      ['npm', `npm_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8'}`],
+      ['github fine-grained', `github_pat_${'11ABCDEFG0abcdefghijkl_ABCDEFGHIJKLMNOP'}`],
+      ['github classic', 'ghp_0123456789abcdefghijABCDEFGHIJ'],
+      ['gitlab', 'glpat-abcdefghij1234567890'],
+      ['pypi', 'pypi-AgEIcHlwaS5vcmcCJDU1NTU1'],
+      ['digitalocean', `dop_v1_${'0'.repeat(64)}`],
+      ['google', 'AIzaSyA0123456789abcdefghijklmnopqrst'],
+      ['aws', 'AKIAIOSFODNN7EXAMPLE'],
+      ['slack', 'xoxb-123456789012-abcdefghijkl'],
+      ['openai', 'sk-abcdefghijklmnopqrstuvwx'],
+    ] as const;
+    for (const [name, secret] of secrets) {
+      expect(redact(`ran: publish --with ${secret}`), name).not.toContain(secret);
+    }
+    // …and an npmrc-style assignment of an otherwise unrecognizable token.
+    expect(redact('//registry.npmjs.org/:_authToken=totally-opaque-value')).not.toContain('totally-opaque-value');
+  });
+
   it('digests a transcript into prompts, files, commits, and consequential commands', async () => {
     const home = mkdtempSync(join(tmpdir(), 'radar-home-'));
     const proj = mkdtempSync(join(tmpdir(), 'radar-proj-'));

@@ -98,13 +98,21 @@ export function isBlipWrite(command: string): boolean {
  * (a mangled command) is far cheaper than a leaked key.
  */
 const SECRET_PATTERNS: RegExp[] = [
-  /\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}/g,
-  /\bgh[pousr]_[A-Za-z0-9]{20,}/g,
-  /\bxox[abposr]-[A-Za-z0-9-]{10,}/g,
-  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
-  /\bAKIA[0-9A-Z]{16}\b/g,
+  /\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}/g, // OpenAI / Anthropic / Stripe style
+  /\bgithub_pat_[A-Za-z0-9_]{20,}/g, // GitHub fine-grained PAT
+  /\bgh[pousr]_[A-Za-z0-9]{20,}/g, // GitHub classic PAT / OAuth / refresh
+  /\bnpm_[A-Za-z0-9]{30,}/g, // npm automation + granular tokens
+  /\bglpat-[A-Za-z0-9_-]{16,}/g, // GitLab PAT
+  /\bpypi-[A-Za-z0-9_-]{16,}/g, // PyPI upload token
+  /\bdop_v1_[a-f0-9]{32,}/g, // DigitalOcean
+  /\bAIza[0-9A-Za-z_-]{30,}/g, // Google API key
+  /\bxox[abposr]-[A-Za-z0-9-]{10,}/g, // Slack
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, // JWT
+  /\bAKIA[0-9A-Z]{16}\b/g, // AWS access key id
   /(--(?:password|token|api[-_]?key|secret)[= ])\S+/gi,
   /((?:AUTHORIZATION|BEARER|PASSWORD|SECRET|TOKEN|API[_-]?KEY)\s*[:=]\s*)\S+/gi,
+  // Last resort: an `_authToken=` / `:_auth=` assignment of any shape (npmrc, pip.conf, …).
+  /((?:_authToken|_auth|_password)\s*=\s*)\S+/gi,
 ];
 
 export function redact(s: string): string {
