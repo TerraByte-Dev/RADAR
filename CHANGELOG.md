@@ -6,6 +6,15 @@ until it stabilizes.
 
 ## [Unreleased]
 
+### Security
+
+- **`radar-blip sessions` redaction missed several common credential shapes** — npm
+  (`npm_…`), GitHub fine-grained (`github_pat_…`), GitLab, PyPI, DigitalOcean and Google
+  API keys all passed through untouched. That matters more here than in most tools: a
+  digest is fed to a model, which may quote it into a `# Session log` that gets committed.
+  Added those patterns plus a catch-all for `_authToken=` / `_auth=` / `_password=`
+  assignments, so an opaque token still gets caught by the shape of its assignment.
+
 ## [2.0.0] — 2026-08-05
 
 **Breaking (`radar-blip`):** `BlipFields.next_action`, `Blip#setNextAction`, and
