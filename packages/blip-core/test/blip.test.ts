@@ -247,6 +247,86 @@ keep me
     expect(out).toBe(crlf.replace('- [ ] third', '- [x] third'));
     expect(out).not.toMatch(/[^\r]\n/); // no stray LF-only line endings
   });
+
+  it('insertTask puts a task at the head of the queue, prose and sub-bullets intact', () => {
+    const out = Blip.parse(TASKS_RICH).insertTask(0, 'urgent').toString();
+    const reparsed = Blip.parse(out);
+    expect(reparsed.tasks.map((t) => t.text)).toEqual(['urgent', 'first', 'second', 'third']);
+    expect(out).toContain('  - [ ] indented sub-task — body text, not a task');
+    expect(out).toContain('a prose note inside the tasks section');
+    expect(out).toContain('# Notes\nkeep me');
+  });
+
+  it('moveTask reorders without disturbing any non-checklist line', () => {
+    const out = Blip.parse(TASKS_RICH).moveTask('third', 0).toString();
+    expect(Blip.parse(out).tasks.map((t) => t.text)).toEqual(['third', 'first', 'second']);
+    const nonTaskLines = (s: string): string[] => s.split('\n').filter((l) => !/^- \[[ xX]\] /.test(l));
+    expect(nonTaskLines(out)).toEqual(nonTaskLines(TASKS_RICH));
+  });
+
+  it('a reorder never resurrects a checklist line hiding in a fenced example', () => {
+    const doc = `# Tasks\n- [ ] a\n- [ ] b\n\n# Notes\n\`\`\`\n- [ ] not a task\n\`\`\`\n`;
+    const out = Blip.parse(doc).moveTask('b', 0).toString();
+    expect(Blip.parse(out).tasks.map((t) => t.text)).toEqual(['b', 'a']);
+    expect(out).toContain('```\n- [ ] not a task\n```');
+  });
+});
+
+describe('next_action retirement', () => {
+  it('promotes a legacy next_action to task #1 and drops the key', () => {
+    const out = Blip.parse(FULL).migrateNextAction().toString();
+    expect(out).not.toContain('next_action');
+    expect(Blip.parse(out).tasks.map((t) => t.text)).toEqual([
+      'Wire scan into the radar',
+      'Decide architecture',
+      'Scaffold app',
+    ]);
+    expect(out).toContain('repo: TerraByte-Dev/RADAR'); // unknown keys still round-trip
+    expect(out).toContain('Whiteboard lives in the bedroom.');
+  });
+
+  it('is idempotent and never duplicates an equivalent task', () => {
+    const once = Blip.parse(FULL).migrateNextAction().toString();
+    expect(Blip.parse(once).migrateNextAction().toString()).toBe(once);
+  });
+
+  it('matches an existing task loosely — case, spacing, and a (due …) tail do not count', () => {
+    const doc = `---\nnext_action: Ship  V1\n---\n\n# Tasks\n- [ ] ship v1 (due 2026-07-01)\n`;
+    const out = Blip.parse(doc).migrateNextAction().toString();
+    expect(Blip.parse(out).tasks.map((t) => t.text)).toEqual(['ship v1 (due 2026-07-01)']);
+    expect(out).not.toContain('next_action');
+  });
+
+  it('drops a blank next_action without inventing a task', () => {
+    const out = Blip.parse(`---\nnext_action: "  "\n---\n\n# Tasks\n- [ ] a\n`).migrateNextAction().toString();
+    expect(Blip.parse(out).tasks.map((t) => t.text)).toEqual(['a']);
+    expect(out).not.toContain('next_action');
+  });
+
+  it('leaves a blip with broken frontmatter completely alone', () => {
+    const broken = `---\nname: "unterminated\nnext_action: x\n---\n\n# Tasks\n`;
+    const b = Blip.parse(broken);
+    expect(b.fmErrors.length).toBeGreaterThan(0);
+    expect(b.migrateNextAction().toString()).toBe(broken); // no throw, no rewrite
+  });
+
+  it('is a no-op on a file that never had the key', () => {
+    const doc = `---\nname: X\n---\n\n# Tasks\n- [ ] a\n`;
+    expect(Blip.parse(doc).migrateNextAction().toString()).toBe(doc);
+  });
+
+  it('yields to a next action the caller just chose, instead of outranking it', () => {
+    // The migration runs after the caller's edits, but a stale field must not displace the
+    // task someone deliberately promoted in the same write.
+    const doc = `---\nnext_action: old plan\n---\n\n# Tasks\n- [ ] a\n`;
+    const b = Blip.parse(doc).insertTask(0, 'the real next thing').migrateNextAction();
+    expect(b.tasks.map((t) => t.text)).toEqual(['the real next thing', 'old plan', 'a']);
+    // …and the same for a promotion by move.
+    const b2 = Blip.parse(`---\nnext_action: old plan\n---\n\n# Tasks\n- [ ] a\n- [ ] b\n`)
+      .moveTask('b', 0)
+      .migrateNextAction();
+    expect(b2.tasks.map((t) => t.text)).toEqual(['b', 'old plan', 'a']);
+  });
 });
 
 describe('frontmatter YAML error classification', () => {
@@ -323,11 +403,10 @@ describe('input hygiene', () => {
     expect(() => b.appendSession({ date: ' 2026-06-01 ', lines: ['x'] })).not.toThrow(); // trimmed ok
   });
 
-  it('coerces scalar name/category/next_action and wraps scalar tags', () => {
-    const b = Blip.parse(`---\nname: 123\ncategory: 7\nnext_action: false\ntags: solo\n---\n`);
+  it('coerces scalar name/category and wraps scalar tags', () => {
+    const b = Blip.parse(`---\nname: 123\ncategory: 7\ntags: solo\n---\n`);
     expect(b.fields.name).toBe('123');
     expect(b.fields.category).toBe('7');
-    expect(b.fields.next_action).toBe('false');
     expect(b.fields.tags).toEqual(['solo']);
   });
 

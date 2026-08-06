@@ -149,6 +149,11 @@ export async function readProject(
  * All app mutations go through `updateBlip` so a concurrent agent-CLI write to the same
  * file is never clobbered (the patch replays on the fresh content). The self-write note
  * happens inside the mutate so the echo hash always reflects the bytes that win the write.
+ *
+ * One deliberate exception: `updateBlip` retires a legacy `next_action` *after* the mutate,
+ * so on the very first write to a file still carrying one the noted hash is pre-migration and
+ * the watcher fires one extra rescan. Once per legacy file, idempotent, and generation-guarded
+ * — not worth threading a pre-write callback through the engine's most safety-critical function.
  */
 export async function setFields(blipPath: string, patch: BlipFieldPatch): Promise<ProjectRecord> {
   await updateBlip(blipPath, (blip) => {
@@ -157,7 +162,6 @@ export async function setFields(blipPath: string, patch: BlipFieldPatch): Promis
     if (patch.priority !== undefined) blip.setPriority(patch.priority)
     if (patch.category !== undefined) blip.setCategory(patch.category)
     if (patch.status !== undefined) blip.setStatus(patch.status)
-    if (patch.next_action !== undefined) blip.setNextAction(patch.next_action)
     if (patch.deadline !== undefined) blip.setDeadline(patch.deadline)
     if (patch.operation !== undefined) blip.setOperation(patch.operation)
     if (patch.radar_angle !== undefined) blip.setRadarAngle(patch.radar_angle)
@@ -172,7 +176,8 @@ export async function taskOp(blipPath: string, op: BlipTaskOp): Promise<ProjectR
   await updateBlip(blipPath, (blip) => {
     switch (op.action) {
       case 'add':
-        blip.addTask(op.text ?? '')
+        if (op.top) blip.insertTask(0, op.text ?? '')
+        else blip.addTask(op.text ?? '')
         break
       case 'done':
         blip.setTaskDone(op.ref!, true)
@@ -189,22 +194,23 @@ export async function taskOp(blipPath: string, op: BlipTaskOp): Promise<ProjectR
       case 'edit':
         blip.editTask(op.ref!, op.text ?? '')
         break
+      case 'mv':
+        blip.moveTask(op.ref!, op.to ?? 0)
+        break
     }
     noteSelfWrite(blipPath, blip.toString())
   })
   return readProject(blipPath)
 }
 
-/** Append a dated session-log entry (append-only) and update next_action + last_session. */
+/** Append a dated session-log entry (append-only) and stamp last_session. */
 export async function handoff(
   blipPath: string,
   lines: string[],
-  next?: string,
   author?: string
 ): Promise<ProjectRecord> {
   await updateBlip(blipPath, (blip) => {
     blip.appendSession({ lines, author })
-    if (next) blip.setNextAction(next)
     noteSelfWrite(blipPath, blip.toString())
   })
   return readProject(blipPath)

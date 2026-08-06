@@ -4,7 +4,8 @@
 
 `radar-blip` is the engine + CLI behind [RADAR](https://github.com/TerraByte-Dev/RADAR). Every
 project folder carries a `BLIP.md` — a human-readable, git-friendly state file holding the
-project's horizon, priority, status, next action, task checklist, and session log. Your AI
+project's horizon, priority, status, task checklist (whose first unchecked item *is* the next
+action), and session log. Your AI
 coding agent (Claude Code or Codex) writes it as you work via the `/blip` skill; the RADAR
 desktop app plots every project as a blip on a radar. One shared engine performs every write —
 atomically, preserving your prose and any unknown keys byte-for-byte.
@@ -31,13 +32,29 @@ Then run `/blip` in any project from your coding agent to capture a handoff. Re-
 ## Commands
 
 ```
-radar-blip init     [--name N] [--horizon today|week|someday] [--priority 1-5] [--category C] [--status S] [--next "…"] [--deadline YYYY-MM-DD] [--operation O] [--force]
+radar-blip init     [--name N] [--horizon today|week|someday] [--priority 1-5] [--category C] [--status S] [--task "first step"] [--deadline YYYY-MM-DD] [--operation O] [--force]
 radar-blip show     [--json]
-radar-blip set      [--horizon H] [--priority 1-5] [--category C] [--status S] [--next "…"] [--deadline YYYY-MM-DD] [--operation O] [--name N] [--tag T …]
-radar-blip task     add "text" | done|undone|toggle|rm <n|text> | list
-radar-blip handoff  [--line "did X" --line "did Y"] [--next "next action"] [--summary "…"] [--author A]
+radar-blip set      [--horizon H] [--priority 1-5] [--category C] [--status S] [--deadline YYYY-MM-DD] [--operation O] [--name N] [--tag T …]
+radar-blip task     add "text" [--top] | done|undone|toggle|rm <n|text> | mv <n|text> <to> | list
+radar-blip handoff  [--line "did X" --line "did Y"] [--summary "…"] [--author A]
+radar-blip sync     [--file payload.json | --json '…'] [--dry-run]   # one atomic reconciliation
+radar-blip sessions [--since ISO] [--limit N] [--json]              # digest this folder's AI sessions
+radar-blip hook stop                                                # Claude Code Stop hook
 radar-blip skills install [--claude] [--codex] [--force]
 ```
+
+**The task queue is the plan** — tasks are in priority order and the *first unchecked one is the
+project's next action*. There is no `next_action` field; a legacy one is promoted to task #1 on
+the first write. `--next` still works as a deprecated alias for `task add --top`.
+
+`sync` takes one JSON reconciliation on stdin (or `--file`/`--json`) and applies the whole thing
+in a single atomic write — session lines, task adds/dones/edits/removals, and field changes.
+Every task ref (a 1-based position or exact text) resolves against the pre-sync state, so ops
+never shift each other, and one bad ref fails the sync without writing a byte.
+
+`sessions` reads Claude Code's own transcripts for this folder, so an agent can reconcile against
+what a session *did* rather than what it remembers. It is Claude-Code-specific; nothing else on
+this list depends on it.
 
 Every command operates on `./BLIP.md` by default; target another folder with `--path "DIR"`.
 With no `--author`, `handoff` stamps the session log with your OS username; `--summary` is an
@@ -53,7 +70,6 @@ horizon: week          # fuzzy distance fallback: today | week | someday
 priority: 1            # 1 (top) … 5 — blip size
 category: Product      # color + sector on the radar
 status: active         # active | paused | blocked | shipped | archived
-next_action: Review the settings branch, then land the pivot PR
 created: 2026-06-01
 last_session: 2026-06-11
 tags: [terrabyte, tooling]
@@ -81,7 +97,7 @@ An optional frontmatter `deadline:` is the project-level hard date for task-less
 ## The BLIP.md guarantee
 
 `radar-blip` owns a known frontmatter subset (`name, horizon, deadline, priority, category,
-status, operation, next_action, radar_angle, created, last_session, tags, links`), the
+status, operation, radar_angle, created, last_session, tags, links`), the
 `# Tasks` checklist, and the append-only `# Session log`. **`# Notes`, any other heading, and
 any unknown frontmatter key are round-tripped verbatim** — fenced code blocks included, so an
 example `# Tasks` inside your notes never fools the engine, and prose or sub-bullets inside the

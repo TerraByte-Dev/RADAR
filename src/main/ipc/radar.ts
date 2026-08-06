@@ -97,10 +97,8 @@ export function registerRadarHandlers(getWindow: () => BrowserWindow | null): ()
   ipcMain.handle(IPC.radarTask, (_e, blipPath: string, op: BlipTaskOp) =>
     taskOp(guardBlip(blipPath), op)
   )
-  ipcMain.handle(
-    IPC.radarHandoff,
-    (_e, blipPath: string, lines: string[], next?: string, author?: string) =>
-      handoff(guardBlip(blipPath), lines, next, author)
+  ipcMain.handle(IPC.radarHandoff, (_e, blipPath: string, lines: string[], author?: string) =>
+    handoff(guardBlip(blipPath), lines, author)
   )
   ipcMain.handle(IPC.radarInit, async (_e, dir: string, opts: InitProjectOptions) =>
     initProject(await assertInitDir(dir), opts)

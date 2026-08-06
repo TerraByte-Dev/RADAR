@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, ExternalLink, FolderOpen, RotateCcw, Sparkles, X } from 'lucide-react'
+import { ArrowUpToLine, Check, ExternalLink, FolderOpen, RotateCcw, Sparkles, X } from 'lucide-react'
 import type { BlipStatus, Horizon, ProjectRecord } from '@shared/radar'
 import { BLIP_STATUSES, HORIZONS } from '@shared/radar'
 import { isClickableLink, normalizeLinks } from '../lib/links'
@@ -55,6 +55,8 @@ export function ProjectDetail({
   const log = parseSessionLog(p.sessionLog)
   const done = p.tasks.filter((t) => t.done).length
   const links = normalizeLinks(p.links)
+  // The head of the queue — no separate "next action" field; the list's order says it.
+  const nextIndex = p.tasks.findIndex((t) => !t.done)
 
   return (
     <div className="flex h-full flex-col">
@@ -212,27 +214,22 @@ export function ProjectDetail({
               />
             </div>
 
-            <div className="col-span-2">
-              <Label>Next action</Label>
-              <TextField
-                key={`next-${p.blipPath}`}
-                value={p.next_action ?? ''}
-                placeholder="one imperative line"
-                onCommit={(v) => setFields(p.blipPath, { next_action: v })}
-              />
-            </div>
           </div>
 
-          {/* Tasks */}
+          {/* Tasks — the queue IS the plan; its head is the next action. */}
           <div className="mt-4">
             <Label>
               Tasks · {done}/{p.tasks.length}
+              <span className="ml-1.5 normal-case tracking-normal text-faint/70">
+                — in order; the first open one is next
+              </span>
             </Label>
             <div className="flex flex-col">
               {p.tasks.map((t, i) => {
                 if (!showCompleted && t.done) return null
                 const due = t.done ? null : taskDueDate(t.text)
                 const urg = due ? urgencyForDue(due) : null
+                const isNext = i === nextIndex
                 return (
                   <div key={i} className="group flex items-center gap-2 py-0.5">
                     <button
@@ -244,9 +241,28 @@ export function ProjectDetail({
                     >
                       {t.done && <Check size={10} strokeWidth={3} />}
                     </button>
-                    <span className={`flex-1 font-mono text-[12px] ${t.done ? 'text-faint line-through' : 'text-ink'}`}>
+                    <span
+                      className={`flex-1 font-mono text-[12px] ${
+                        t.done
+                          ? 'text-faint line-through'
+                          : isNext
+                            ? 'text-phosphor phosphor-glow'
+                            : 'text-ink'
+                      }`}
+                    >
+                      {isNext && <span className="mr-1 text-phosphor/70">▸</span>}
                       {taskText(t.text)}
                     </span>
+                    {!t.done && !isNext && (
+                      <button
+                        onClick={() => taskOp(p.blipPath, { action: 'mv', ref: i, to: 0 })}
+                        aria-label="Make this the next action"
+                        title="Make this the next action"
+                        className="shrink-0 text-faint opacity-0 transition-opacity hover:text-phosphor group-hover:opacity-100"
+                      >
+                        <ArrowUpToLine size={11} />
+                      </button>
+                    )}
                     {!t.done && (
                       <input
                         type="date"

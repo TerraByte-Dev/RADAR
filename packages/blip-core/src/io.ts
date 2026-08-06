@@ -77,6 +77,10 @@ async function sweepStaleTmp(dir: string): Promise<void> {
  * changed the file since our read, the stale result is discarded and `mutate` is
  * replayed on the fresh content instead of clobbering the concurrent update. Gives up
  * loudly after 3 conflicting rounds rather than spinning forever.
+ *
+ * Also retires a legacy `next_action` key here — *after* `mutate`, so the caller's task
+ * refs still mean what they meant when it read the file. Every writer therefore migrates
+ * for free, and nobody ever hand-edits a BLIP.md to do it.
  */
 export async function updateBlip(path: string, mutate: (blip: Blip) => void | Promise<void>): Promise<Blip> {
   const MAX_ATTEMPTS = 3;
@@ -84,6 +88,7 @@ export async function updateBlip(path: string, mutate: (blip: Blip) => void | Pr
     const before = await readFile(path, 'utf8');
     const blip = Blip.parse(before);
     await mutate(blip);
+    blip.migrateNextAction();
     const onDisk = await readFile(path, 'utf8');
     if (onDisk !== before) continue; // lost the race — retry on the fresh bytes
     await writeBlipAtomic(path, blip);

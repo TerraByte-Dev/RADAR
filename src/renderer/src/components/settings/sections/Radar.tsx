@@ -28,7 +28,7 @@ export default function Radar(): JSX.Element {
     >
       <SettingRow
         label="Neglected after"
-        help="How long a project can go untouched before it counts as neglected — shown in the NOW attention panel, the Neglected list, and the sidebar count."
+        help="How long a project can go untouched before it counts as neglected — shown in the NOW attention panel, the Neglected list, and the sidebar count. A project that is scheduled (its own deadline, or a task with a (due …)) or paused/shipped/archived never counts, however long it has been."
         keywords="neglected stale threshold days untouched last session"
       >
         <SegmentedControl

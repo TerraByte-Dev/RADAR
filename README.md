@@ -99,9 +99,25 @@ npm i -g radar-blip
 radar-blip skills install     # → Claude Code + Codex /blip skills
 ```
 
-At the end of a working session your agent runs `radar-blip handoff` — appending dated bullets
-to the project's `# Session log` and updating `next_action`, atomically and round-trip-clean.
-The app's watcher picks the write up live. The engine ([`packages/blip-core`](packages/blip-core),
+At the end of a working session you type **`/blip sync`** and your agent reconciles the file with
+what actually happened: it reads the current queue (`radar-blip show --json`), reads the session
+itself (`radar-blip sessions` digests this folder's Claude Code transcripts — the asks, the files
+written, the commands run, the commits), then applies the whole thing in **one atomic write** —
+checking off what got finished, queueing the real next steps in order, and logging dated bullets
+to `# Session log`.
+
+**The task queue is the plan.** Tasks are the literal next steps in priority order, and the first
+unchecked one *is* the project's next action — there's no separate field to keep in sync (see
+[the schema](docs/BLIP-SCHEMA.md#retired-next_action)).
+
+To make it automatic, add the bundled **Stop hook** to `~/.claude/settings.json` — when a session
+in a tracked repo ends with unlogged work behind it, it asks the agent to sync before stopping:
+
+```json
+{ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "radar-blip hook stop", "timeout": 15 }] }] } }
+```
+
+The app's watcher picks every write up live. The engine ([`packages/blip-core`](packages/blip-core),
 npm name `radar-blip` — first publish lands with the v1 release; until then
 `npm i -g ./packages/blip-core`) guarantees: **byte-faithful round-trips, atomic writes,
 append-only session log, and it never touches `# Notes` or unknown frontmatter keys.** Never

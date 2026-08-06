@@ -17,7 +17,6 @@ export interface BlipFields {
   priority: number; // 1..5, 1 = top
   category: string;
   status: Status;
-  next_action?: string;
   /**
    * Hard due date — ISO `YYYY-MM-DD` or full datetime. When present it drives the
    * radar's continuous distance-from-center; `horizon` is the fuzzy fallback band.
@@ -36,7 +35,13 @@ export interface BlipFields {
   links?: unknown[];
 }
 
-/** Keys the engine manages; everything else in frontmatter is "unknown" and preserved. */
+/**
+ * Keys the engine manages; everything else in frontmatter is "unknown" and preserved.
+ * `next_action` is **retired** — it stays listed here (so it is never mistaken for a
+ * user key and round-tripped forever) but no longer appears on `BlipFields`; the first
+ * write to a file carrying one promotes it to task #1 and drops the key
+ * (`Blip#migrateNextAction`). The next action is now simply the first unchecked task.
+ */
 export const KNOWN_KEYS: readonly string[] = [
   'name', 'horizon', 'priority', 'category', 'status',
   'next_action', 'deadline', 'radar_angle', 'operation',

@@ -144,7 +144,7 @@ interface StoreState {
   // Project (BLIP.md) mutations — every write goes through the engine via IPC.
   setFields(blipPath: string, patch: BlipFieldPatch): Promise<void>
   taskOp(blipPath: string, op: BlipTaskOp): Promise<void>
-  handoff(blipPath: string, lines: string[], next?: string): Promise<void>
+  handoff(blipPath: string, lines: string[]): Promise<void>
   /** Pin (number) or clear (null) a blip's manual radar angle — visual only. */
   setRadarAngle(blipPath: string, angle: number | null): Promise<void>
   resetRadarLayout(): Promise<void>
@@ -269,9 +269,9 @@ export const useStore = create<StoreState>((set, get) => ({
     }
   },
 
-  async handoff(blipPath, lines, next) {
+  async handoff(blipPath, lines) {
     try {
-      const rec = await window.radar.handoff(blipPath, lines, next)
+      const rec = await window.radar.handoff(blipPath, lines)
       set((s) => ({ projects: replace(s.projects, rec) }))
     } catch (e) {
       await recoverFailedWrite(set, 'handoff', blipPath, e)

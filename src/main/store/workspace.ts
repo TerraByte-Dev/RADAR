@@ -1,6 +1,6 @@
 import { mkdir, access, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createBlip, writeBlipAtomic, readBlip } from 'radar-blip'
+import { createBlip, updateBlip } from 'radar-blip'
 import type { ProjectRecord } from '../../shared/radar'
 import { readProject } from './projects'
 import { noteSelfWrite } from './selfwrite'
@@ -56,7 +56,7 @@ async function createInboxIfMissing(workspace: string): Promise<string> {
     category: 'Personal',
     horizon: 'someday',
     priority: 3,
-    next_action: 'Capture loose tasks & deadlines'
+    first_task: 'Capture loose tasks & deadlines'
   })
   const content = blip.toString()
   try {
@@ -69,12 +69,17 @@ async function createInboxIfMissing(workspace: string): Promise<string> {
   return file
 }
 
-/** Append a captured task to the Inbox blip and return its refreshed record. */
+/**
+ * Append a captured task to the Inbox blip and return its refreshed record. Goes through
+ * `updateBlip` like every other app write — quick capture races an agent CLI write no less
+ * than the detail panel does, and it is also where a legacy Inbox gets its `next_action`
+ * retired (the migration lives inside `updateBlip`).
+ */
 export async function inboxAddTask(workspace: string, text: string): Promise<ProjectRecord> {
   const file = await ensureInbox(workspace)
-  const blip = await readBlip(file)
-  blip.addTask(text)
-  noteSelfWrite(file, blip.toString())
-  await writeBlipAtomic(file, blip)
+  await updateBlip(file, (blip) => {
+    blip.addTask(text)
+    noteSelfWrite(file, blip.toString())
+  })
   return readProject(file)
 }

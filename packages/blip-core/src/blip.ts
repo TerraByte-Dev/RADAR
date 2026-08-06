@@ -65,6 +65,15 @@ function asString(v: unknown): string | undefined {
   return undefined;
 }
 
+/** Trailing `(due …)` milestone marker — task *metadata*, not part of the task's identity. */
+const DUE_TAIL_RE = /\s*\([Dd]ue\s+[^)]*\)\s*$/;
+
+/** Loose task equality for de-duplication: case, spacing, and a `(due …)` tail don't count. */
+function sameTask(a: string, b: string): boolean {
+  const norm = (s: string): string => s.replace(DUE_TAIL_RE, '').trim().replace(/\s+/g, ' ').toLowerCase();
+  return norm(a) === norm(b);
+}
+
 type Block =
   | { kind: 'raw'; heading: string | null; text: string }
   | { kind: 'tasks'; heading: string; comment: string; original: string; dirty: boolean }
@@ -174,6 +183,8 @@ export class Blip {
   #taskLines: WeakMap<BlipTask, number>;
   #tasksBlock: Extract<Block, { kind: 'tasks' }> | null;
   #logBlock: Extract<Block, { kind: 'log' }> | null;
+  /** How many tasks this mutation deliberately put at the head — see `migrateNextAction`. */
+  #headInserts = 0;
 
   private constructor(state: {
     hadBom: boolean;
@@ -268,8 +279,6 @@ export class Blip {
     };
     const name = asString(v.name);
     if (name !== undefined) out.name = name;
-    const nextAction = asString(v.next_action);
-    if (nextAction !== undefined) out.next_action = nextAction;
     // A garbage deadline is dropped on read (per docs/BLIP-SCHEMA.md) instead of crashing consumers.
     const deadline = coerceDeadline(v.deadline);
     if (deadline !== undefined) out.deadline = deadline;
@@ -348,7 +357,6 @@ export class Blip {
   setPriority(p: number): this { return this.setField('priority', coercePriority(p)); }
   setCategory(c: string): this { return this.setField('category', c); }
   setStatus(s: Status): this { return this.setField('status', s); }
-  setNextAction(text: string): this { return this.setField('next_action', text); }
   /** Set or (with `null`) clear the hard deadline. */
   setDeadline(date: string | null): this { return this.setField('deadline', date ?? undefined); }
   /** Pin the visual radar angle, or clear it with `null`. Stored normalized to [0, 360). */
@@ -387,6 +395,52 @@ export class Blip {
     this.#assertWritable();
     this.#tasks.push({ text: singleLine(text), done });
     this.#ensureTasksBlock().dirty = true;
+    return this;
+  }
+
+  /**
+   * Insert a task at `index` (clamped). Index 0 makes it the project's **next action** —
+   * the queue is the plan, so its head is what to do next.
+   */
+  insertTask(index: number, text: string, done = false): this {
+    this.#assertWritable();
+    const at = Math.min(Math.max(Math.trunc(index), 0), this.#tasks.length);
+    if (at <= this.#headInserts) this.#headInserts++;
+    this.#tasks.splice(at, 0, { text: singleLine(text), done });
+    this.#ensureTasksBlock().dirty = true;
+    return this;
+  }
+
+  /** Move a task to a new position (`to` is clamped) — how you re-prioritize the queue. */
+  moveTask(ref: number | string, to: number): this {
+    this.#assertWritable();
+    const from = this.#resolveTaskIndex(ref);
+    const t = this.#tasks[from];
+    if (!t) throw new Error(`No task matching ${JSON.stringify(ref)}`);
+    this.#tasks.splice(from, 1);
+    const at = Math.min(Math.max(Math.trunc(to), 0), this.#tasks.length);
+    if (at <= this.#headInserts) this.#headInserts++;
+    this.#tasks.splice(at, 0, t);
+    this.#ensureTasksBlock().dirty = true;
+    return this;
+  }
+
+  /**
+   * Retire a legacy `next_action` frontmatter key by promoting it to the head of the queue.
+   * Idempotent, and a no-op when the key is absent, blank, already in the checklist, or
+   * the frontmatter is broken (a read-only blip must stay untouched). Called for you by
+   * `updateBlip`, so every writer migrates without anyone hand-editing the file.
+   *
+   * It runs *after* the caller's own edits (so their task refs still mean what they read),
+   * but yields to anything they deliberately put at the head — a stale field should never
+   * outrank the next action someone just chose.
+   */
+  migrateNextAction(): this {
+    if (this.#fmErrors.length) return this;
+    const text = asString(this.#fmValues.next_action)?.trim();
+    if (text === undefined) return this;
+    if (text && !this.#tasks.some((t) => sameTask(t.text, text))) this.insertTask(this.#headInserts, text);
+    this.setField('next_action', undefined);
     return this;
   }
 
@@ -475,18 +529,18 @@ export class Blip {
     }
 
     // Rebuild from the ORIGINAL section text: only checklist lines are rewritten — every
-    // other line (sub-bullets, prose, code examples, blanks) round-trips verbatim. Each
-    // surviving task overwrites the line it was parsed from, a removed task drops its
-    // line, and net-new tasks are appended after the last checklist line (or after the
-    // heading + lead comment when the section never had one).
-    const byLine = new Map<number, BlipTask>();
-    const added: BlipTask[] = [];
-    for (const t of this.#tasks) {
-      const line = this.#taskLines.get(t);
-      if (line !== undefined) byLine.set(line, t);
-      else added.push(t);
-    }
-
+    // other line (sub-bullets, prose, code examples, blanks) round-trips verbatim.
+    //
+    // Two strategies, because a checklist has both an *identity* and an *order*:
+    //  · **in place** (the common case — toggle/edit/rm, plus adds at the end): each
+    //    surviving task overwrites the line it was parsed from, a removed task drops its
+    //    line, and net-new tasks land after the last checklist line (or after the heading +
+    //    lead comment when the section never had one). Byte-exact minimal diffs.
+    //  · **re-slot** (only when the queue was reordered — `insertTask`/`moveTask`, i.e. the
+    //    order no longer matches the source): the original checklist lines become ordered
+    //    slots that the task array is poured into. Non-checklist lines still round-trip
+    //    verbatim and stay put; what moves is which task sits in which slot — the only way
+    //    to honor a reorder without inventing positions for interleaved prose.
     const endsWithEol = /\r?\n$/.test(b.original);
     const lines = b.original.split(/\r?\n/);
     if (endsWithEol) lines.pop();
@@ -494,26 +548,77 @@ export class Blip {
     const out: string[] = [];
     const inFence = makeFenceTracker();
     let lastTaskAt = -1;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]!;
-      if (!inFence(line) && TASK_LINE_RE.test(line)) {
-        const t = byLine.get(i);
-        if (t) {
-          out.push(render(t));
-          lastTaskAt = out.length - 1;
+
+    if (this.#tasksInSourceOrder()) {
+      const byLine = new Map<number, BlipTask>();
+      const added: BlipTask[] = [];
+      for (const t of this.#tasks) {
+        const line = this.#taskLines.get(t);
+        if (line !== undefined) byLine.set(line, t);
+        else added.push(t);
+      }
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]!;
+        if (!inFence(line) && TASK_LINE_RE.test(line)) {
+          const t = byLine.get(i);
+          if (t) {
+            out.push(render(t));
+            lastTaskAt = out.length - 1;
+          }
+          // No surviving task for this checklist line → it was removed.
+        } else {
+          out.push(line);
         }
-        // No surviving task for this checklist line → it was removed.
-      } else {
-        out.push(line);
+      }
+      if (added.length) {
+        const at = lastTaskAt >= 0 ? lastTaskAt + 1 : taskInsertionPoint(lines);
+        out.splice(at, 0, ...added.map(render));
+      }
+    } else {
+      const slots = new Set(
+        this.#tasks.map((t) => this.#taskLines.get(t)).filter((n): n is number => n !== undefined),
+      );
+      const queue = this.#tasks.slice();
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]!;
+        if (!inFence(line) && TASK_LINE_RE.test(line)) {
+          if (!slots.has(i)) continue; // that task was removed — drop its line
+          const t = queue.shift();
+          if (t) {
+            out.push(render(t));
+            lastTaskAt = out.length - 1;
+          }
+        } else {
+          out.push(line);
+        }
+      }
+      if (queue.length) {
+        const at = lastTaskAt >= 0 ? lastTaskAt + 1 : taskInsertionPoint(lines);
+        out.splice(at, 0, ...queue.map(render));
       }
     }
 
-    if (added.length) {
-      const at = lastTaskAt >= 0 ? lastTaskAt + 1 : taskInsertionPoint(lines);
-      out.splice(at, 0, ...added.map(render));
-    }
-
     return out.join(eol) + (endsWithEol ? eol : '');
+  }
+
+  /**
+   * True when the task array still matches the source layout — every task parsed from the
+   * file appears in its original relative order and every net-new task is at the tail.
+   * Only then can each task be written back to the exact line it came from.
+   */
+  #tasksInSourceOrder(): boolean {
+    let prev = -1;
+    let sawNew = false;
+    for (const t of this.#tasks) {
+      const line = this.#taskLines.get(t);
+      if (line === undefined) {
+        sawNew = true;
+        continue;
+      }
+      if (sawNew || line <= prev) return false;
+      prev = line;
+    }
+    return true;
   }
 
   toString(): string {
