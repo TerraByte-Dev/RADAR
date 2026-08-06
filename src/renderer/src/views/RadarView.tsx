@@ -38,7 +38,7 @@ import {
 } from '../lib/projectRadar'
 import { drivingTask, setTaskDue, taskDueDate, taskText, taskUrgency } from '../lib/taskDue'
 import { daysFromToday } from '../lib/date'
-import { isNeglected, projectsOnRadar } from '../lib/selectors'
+import { archivedProjects, isNeglected, projectsOnRadar, shippedProjects } from '../lib/selectors'
 import { readRadarPalette, rgb, rgba } from '../lib/radarColors'
 import { THEME_CHANGE_EVENT } from '../lib/theme'
 import { useStore } from '../store/useStore'
@@ -62,6 +62,8 @@ const SIGNAL_LOST = '#FF3030'
 const PING_MS = 950
 const MIN_PIN_PX = 8
 const NO_CATEGORY = '·'
+/** Narrower than this and the dead space beside the dial can't hold a readable label. */
+const MIN_GUTTER = 132
 
 const MENU_ITEM =
   'flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-[11px] uppercase tracking-[0.06em] text-muted transition-colors hover:bg-phosphor/10 hover:text-phosphor'
@@ -91,11 +93,21 @@ export function RadarView(): JSX.Element {
 
   const [hudId, setHudId] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; blipPath: string | null } | null>(null)
+  // Width of the dead space beside the scope (`cx - R`). Published out of the canvas on resize
+  // only — never per frame — so the chrome can live *around* the circle instead of across it.
+  // The dial's own geometry is untouched: nothing here can shrink the radar.
+  const [gutter, setGutter] = useState(0)
 
   const contacts = useMemo(() => projectsOnRadar(projects), [projects])
   const menuProject = menu ? projects.find((p) => p.blipPath === menu.blipPath) : undefined
 
   const [attnOpen, setAttnOpen] = useState(false)
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  // Off the scope but not gone: archived blips are invisible on the radar and shipped ones only
+  // dim, so without a shelf like this there is nowhere to see — or un-archive — either.
+  const archived = useMemo(() => archivedProjects(projects), [projects])
+  const shipped = useMemo(() => shippedProjects(projects), [projects])
+  const offRadar = useMemo(() => [...archived, ...shipped], [archived, shipped])
   // A slow tick so per-task urgency / overdue refresh across the day (not per frame).
   const [nowTick, setNowTick] = useState(0)
   useEffect(() => {
@@ -209,6 +221,9 @@ export function RadarView(): JSX.Element {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return
+      // An open overlay owns Escape — otherwise one press would close the panel AND
+      // deselect the blip behind it.
+      if (attnOpen || archiveOpen) return
       const s = useStore.getState()
       if (!s.quickAddOpen && !s.paletteOpen && s.selectedBlip) {
         e.stopPropagation()
@@ -217,7 +232,7 @@ export function RadarView(): JSX.Element {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [attnOpen, archiveOpen])
 
   // Drop a stale hover/selection if its project leaves the radar.
   useEffect(() => {
@@ -258,6 +273,7 @@ export function RadarView(): JSX.Element {
       cy = H / 2
       R = Math.max(0, Math.min(W, H) / 2 - 30)
       geomRef.current = { cx, cy, R }
+      setGutter(Math.max(0, Math.round(cx - R))) // same number ⇒ React bails, no re-render churn
     }
     const ro = new ResizeObserver(resize)
     ro.observe(canvas)
@@ -692,25 +708,40 @@ export function RadarView(): JSX.Element {
   return (
     <main className="relative flex h-full flex-1 overflow-hidden bg-bg">
       <section className="relative flex h-full flex-1 flex-col overflow-hidden">
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-between px-9 pt-5">
-          <div>
-            <h1 className="font-term text-3xl uppercase tracking-wide text-phosphor phosphor-glow">
-              Radar
-            </h1>
-            <div className="mt-0.5 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
-              <span className="led-dot" /> {contacts.length} projects · distance = next deadline (task
-              or project) · drag to reschedule · right-click resets
+        {/* Chrome lives in the dead space either side of the dial — capped at the measured
+            gutter so a long line can never run across the scope. Below `MIN_GUTTER` there is
+            no room to be legible, so the legend drops rather than overlapping the sweep. */}
+        <div
+          className="pointer-events-none absolute left-0 top-0 z-10 px-9 pt-5"
+          style={{ maxWidth: gutter > MIN_GUTTER ? gutter - 8 : undefined }}
+        >
+          <h1 className="font-term text-3xl uppercase tracking-wide text-phosphor phosphor-glow">
+            Radar
+          </h1>
+          {gutter > MIN_GUTTER && (
+            <div className="mt-1 flex flex-col gap-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-faint">
+              <span className="flex items-center gap-1.5">
+                <span className="led-dot" /> {contacts.length} contacts
+              </span>
+              <span>dist = next deadline</span>
+              <span>drag to reschedule</span>
             </div>
-            {hasPinned && (
-              <button
-                onClick={() => resetRadarLayout()}
-                className="no-drag pointer-events-auto mt-1.5 inline-flex items-center gap-1 border border-rule px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint transition-colors hover:border-phosphor hover:text-phosphor"
-              >
-                <RotateCcw size={10} /> reset layout
-              </button>
-            )}
-          </div>
-          <div className="flex flex-col items-end gap-1 font-mono text-[10px] uppercase tracking-[0.12em]">
+          )}
+          {hasPinned && (
+            <button
+              onClick={() => resetRadarLayout()}
+              className="no-drag pointer-events-auto mt-2 inline-flex items-center gap-1 border border-rule px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint transition-colors hover:border-phosphor hover:text-phosphor"
+            >
+              <RotateCcw size={10} /> reset layout
+            </button>
+          )}
+        </div>
+
+        {gutter > MIN_GUTTER && (
+          <div
+            className="pointer-events-none absolute right-0 top-0 z-10 flex flex-col items-end gap-1 px-9 pt-5 font-mono text-[10px] uppercase tracking-[0.12em]"
+            style={{ maxWidth: gutter - 8 }}
+          >
             {TIME_RINGS.map((ring) => (
               <span key={ring.label} className="flex items-center gap-1.5" style={{ color: ring.color }}>
                 {ring.label}
@@ -721,7 +752,7 @@ export function RadarView(): JSX.Element {
               </span>
             ))}
           </div>
-        </div>
+        )}
 
         <canvas
           ref={canvasRef}
@@ -813,6 +844,17 @@ export function RadarView(): JSX.Element {
           </div>
         )}
 
+        {/* The hangar: everything taken off the scope, parked in the bottom-left dead space. */}
+        {offRadar.length > 0 && (
+          <button
+            onClick={() => setArchiveOpen(true)}
+            title={`${offRadar.length} project(s) off the radar — archived or shipped`}
+            className="no-drag absolute bottom-5 left-9 z-10 inline-flex items-center gap-1.5 border border-rule bg-black/50 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-faint transition-colors hover:border-phosphor hover:text-phosphor"
+          >
+            <Archive size={10} /> archive · {offRadar.length}
+          </button>
+        )}
+
         {/* Reliable DOM hit-target over the NOW center (no canvas/blip overlap fight). */}
         {attention.total > 0 && (
           <button
@@ -854,7 +896,139 @@ export function RadarView(): JSX.Element {
           }}
         />
       )}
+
+      {archiveOpen && (
+        <ArchivePanel
+          archived={archived}
+          shipped={shipped}
+          onClose={() => setArchiveOpen(false)}
+          onSelect={(bp) => {
+            setSelectedBlip(bp)
+            setArchiveOpen(false)
+          }}
+        />
+      )}
     </main>
+  )
+}
+
+/** Shared modal shell for the two radar overlays (attention + archive). */
+function Overlay({
+  title,
+  tone,
+  onClose,
+  children
+}: {
+  title: string
+  tone: 'red' | 'amber' | 'phosphor'
+  onClose: () => void
+  children: React.ReactNode
+}): JSX.Element {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const border = tone === 'red' ? 'border-p1/60' : tone === 'amber' ? 'border-term-amber/60' : 'border-phosphor/50'
+  const text = tone === 'red' ? 'text-p1' : tone === 'amber' ? 'text-term-amber' : 'text-phosphor'
+  return (
+    <>
+      <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-[1px]" onClick={onClose} />
+      <div
+        className={`fixed left-1/2 top-1/2 z-[61] w-[min(440px,90vw)] -translate-x-1/2 -translate-y-1/2 border bg-panel shadow-glow-strong ${border}`}
+      >
+        <div
+          className={`flex items-center justify-between border-b border-rule bg-black/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.16em] ${text}`}
+        >
+          <span>{title}</span>
+          <button onClick={onClose} aria-label="Close" className="metal-key h-6 w-6">
+            <X size={12} />
+          </button>
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto px-2 py-2">{children}</div>
+      </div>
+    </>
+  )
+}
+
+const PANEL_ROW =
+  'group flex w-full items-center gap-2 px-2 py-1.5 text-left font-mono text-[12px] transition-colors hover:bg-phosphor/[0.06]'
+const ROW_ACTION =
+  'shrink-0 border border-transparent px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-faint opacity-0 transition-all hover:border-phosphor hover:text-phosphor group-hover:opacity-100'
+
+function GroupHeading({ children, tone }: { children: React.ReactNode; tone: string }): JSX.Element {
+  return (
+    <div className={`px-2 pb-1 pt-2 font-mono text-[9px] uppercase tracking-[0.16em] ${tone}`}>{children}</div>
+  )
+}
+
+/** The hangar — archived and shipped projects, with the way back onto the radar. */
+function ArchivePanel({
+  archived,
+  shipped,
+  onClose,
+  onSelect
+}: {
+  archived: ProjectRecord[]
+  shipped: ProjectRecord[]
+  onClose: () => void
+  onSelect: (blipPath: string) => void
+}): JSX.Element {
+  const { setFields, deleteProject } = useStore.getState()
+  const total = archived.length + shipped.length
+
+  const Row = ({ p }: { p: ProjectRecord }): JSX.Element => (
+    <div className={PANEL_ROW}>
+      <span
+        className="h-2 w-2 shrink-0 rounded-full opacity-60"
+        style={{ background: categoryColor(p.category) }}
+      />
+      <button onClick={() => onSelect(p.blipPath)} className="min-w-0 flex-1 truncate text-left text-muted">
+        {p.name ?? 'Project'}
+        {p.category && <span className="ml-1.5 text-[10px] text-faint">{p.category}</span>}
+      </button>
+      <button
+        className={ROW_ACTION}
+        title="Put this project back on the radar"
+        onClick={() => setFields(p.blipPath, { status: 'active' })}
+      >
+        <RotateCcw size={10} className="inline" /> restore
+      </button>
+      <button className={ROW_ACTION} title="Reveal in file explorer" onClick={() => window.radar.reveal(p.blipPath)}>
+        <FolderOpen size={10} className="inline" />
+      </button>
+      <button
+        className={ROW_ACTION}
+        title="Delete this project's BLIP.md"
+        onClick={() => {
+          if (window.confirm(`Delete ${p.name ?? 'this project'}'s BLIP.md? This removes the file from disk.`))
+            deleteProject(p.blipPath)
+        }}
+      >
+        <Trash2 size={10} className="inline" />
+      </button>
+    </div>
+  )
+
+  return (
+    <Overlay title={`▸ Archive — ${total}`} tone="phosphor" onClose={onClose}>
+      {total === 0 && (
+        <div className="px-2 py-5 text-center font-mono text-[11px] text-faint">
+          Nothing archived. Right-click a blip to retire it.
+        </div>
+      )}
+      {archived.length > 0 && <GroupHeading tone="text-phosphor/70">Archived — hidden from the radar</GroupHeading>}
+      {archived.map((p) => (
+        <Row key={p.blipPath} p={p} />
+      ))}
+      {shipped.length > 0 && <GroupHeading tone="text-phosphor/70">Shipped — dimmed on the radar</GroupHeading>}
+      {shipped.map((p) => (
+        <Row key={p.blipPath} p={p} />
+      ))}
+    </Overlay>
   )
 }
 
@@ -870,81 +1044,63 @@ function AttentionPanel({
   onClose: () => void
   onSelect: (blipPath: string) => void
 }): JSX.Element {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  const row =
-    'flex w-full items-center gap-2 px-2 py-1.5 text-left font-mono text-[12px] transition-colors hover:bg-phosphor/[0.06]'
+  const { archiveProject } = useStore.getState()
   return (
-    <>
-      <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-[1px]" onClick={onClose} />
-      <div
-        className={`fixed left-1/2 top-1/2 z-[61] w-[min(440px,90vw)] -translate-x-1/2 -translate-y-1/2 border bg-panel shadow-glow-strong ${
-          attention.red ? 'border-p1/60' : 'border-term-amber/60'
-        }`}
-      >
-        <div
-          className={`flex items-center justify-between border-b border-rule bg-black/40 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.16em] ${
-            attention.red ? 'text-p1' : 'text-term-amber'
-          }`}
-        >
-          <span>● Needs attention — {attention.total}</span>
-          <button onClick={onClose} aria-label="Close" className="metal-key h-6 w-6">
-            <X size={12} />
+    <Overlay
+      title={`● Needs attention — ${attention.total}`}
+      tone={attention.red ? 'red' : 'amber'}
+      onClose={onClose}
+    >
+      {attention.total === 0 && (
+        <div className="px-2 py-5 text-center font-mono text-[11px] text-faint">
+          Nothing needs attention. Clear skies.
+        </div>
+      )}
+
+      {attention.overdueTotal > 0 && <GroupHeading tone="text-p1/80">Overdue</GroupHeading>}
+      {attention.overdueProjects.map((p) => (
+        <div key={p.blipPath} className={PANEL_ROW}>
+          <span className="h-2 w-2 shrink-0 rounded-full bg-p1" />
+          <button onClick={() => onSelect(p.blipPath)} className="flex-1 truncate text-left text-ink">
+            {p.name ?? 'Project'}
           </button>
+          <span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-p1">
+            {projectRelativeDeadline(p)}
+          </span>
         </div>
-        <div className="max-h-[60vh] overflow-y-auto px-2 py-2">
-          {attention.total === 0 && (
-            <div className="px-2 py-5 text-center font-mono text-[11px] text-faint">
-              Nothing needs attention. Clear skies.
-            </div>
-          )}
-
-          {attention.overdueTotal > 0 && (
-            <div className="px-2 pb-1 pt-1 font-mono text-[9px] uppercase tracking-[0.16em] text-p1/80">
-              Overdue
-            </div>
-          )}
-          {attention.overdueProjects.map((p) => (
-            <button key={p.blipPath} onClick={() => onSelect(p.blipPath)} className={`${row} text-ink`}>
-              <span className="h-2 w-2 shrink-0 rounded-full bg-p1" />
-              <span className="flex-1 truncate">{p.name ?? 'Project'}</span>
-              <span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-p1">
-                {projectRelativeDeadline(p)}
-              </span>
-            </button>
-          ))}
-          {attention.overdueTasks.map((t, i) => (
-            <button key={`${t.blipPath}-${i}`} onClick={() => onSelect(t.blipPath)} className={`${row} text-muted`}>
-              <span className="ml-1 h-1.5 w-1.5 shrink-0 rotate-45 bg-p1" />
-              <span className="min-w-0 flex-1 truncate">
-                {t.text}
-                <span className="ml-1.5 text-faint">— {t.name}</span>
-              </span>
-              <span className="shrink-0 text-[10px] text-p1">{t.due}</span>
-            </button>
-          ))}
-
-          {attention.neglected.length > 0 && (
-            <div className="px-2 pb-1 pt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-term-amber/80">
-              Neglected ({neglectedDays}d+)
-            </div>
-          )}
-          {attention.neglected.map((p) => (
-            <button key={p.blipPath} onClick={() => onSelect(p.blipPath)} className={`${row} text-muted`}>
-              <span className="h-2 w-2 shrink-0 rounded-full bg-term-amber" />
-              <span className="flex-1 truncate">{p.name ?? 'Project'}</span>
-              <span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-term-amber">stale</span>
-            </button>
-          ))}
+      ))}
+      {attention.overdueTasks.map((t, i) => (
+        <div key={`${t.blipPath}-${i}`} className={PANEL_ROW}>
+          <span className="ml-1 h-1.5 w-1.5 shrink-0 rotate-45 bg-p1" />
+          <button onClick={() => onSelect(t.blipPath)} className="min-w-0 flex-1 truncate text-left text-muted">
+            {t.text}
+            <span className="ml-1.5 text-faint">— {t.name}</span>
+          </button>
+          <span className="shrink-0 text-[10px] text-p1">{t.due}</span>
         </div>
-      </div>
-    </>
+      ))}
+
+      {attention.neglected.length > 0 && (
+        <GroupHeading tone="text-term-amber/80">Neglected ({neglectedDays}d+) — no session, no date</GroupHeading>
+      )}
+      {attention.neglected.map((p) => (
+        <div key={p.blipPath} className={PANEL_ROW}>
+          <span className="h-2 w-2 shrink-0 rounded-full bg-term-amber" />
+          <button onClick={() => onSelect(p.blipPath)} className="flex-1 truncate text-left text-muted">
+            {p.name ?? 'Project'}
+          </button>
+          {/* The escape hatch, where the problem is: retire it without hunting for the blip. */}
+          <button
+            className={ROW_ACTION}
+            title="Archive — take it off the radar (reversible)"
+            onClick={() => archiveProject(p.blipPath)}
+          >
+            <Archive size={10} className="inline" /> archive
+          </button>
+          <span className="shrink-0 text-[10px] uppercase tracking-[0.08em] text-term-amber">stale</span>
+        </div>
+      ))}
+    </Overlay>
   )
 }
 

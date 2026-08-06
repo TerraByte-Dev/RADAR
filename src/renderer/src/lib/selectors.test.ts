@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectRecord } from '@shared/radar'
 import { dayKey } from './date'
+import { radiusFracForDays } from './radar'
+import { scheduleForDrop } from './projectRadar'
 import {
   activityCounts,
+  archivedProjects,
   buildLogbook,
   calendarItemsByDay,
   deadlineDate,
   isNeglected,
+  nextAction,
   parseSessionLog,
-  projectsForView
+  projectsForView,
+  projectsOnRadar,
+  shippedProjects
 } from './selectors'
 
 const REF = new Date('2026-06-03T12:00:00')
@@ -41,6 +47,81 @@ describe('isNeglected', () => {
     expect(isNeglected(p({ last_session: '2026-01-01T00:00:00Z', status: 'shipped' }), REF)).toBe(false)
     expect(isNeglected(p({ last_session: '2026-01-01T00:00:00Z', status: 'archived' }), REF)).toBe(false)
     expect(isNeglected(p({ last_session: '2026-01-01T00:00:00Z', ghost: true }), REF)).toBe(false)
+    // `paused` is a deliberate "not now" — it should not keep nagging from the centre ring.
+    expect(isNeglected(p({ last_session: '2026-01-01T00:00:00Z', status: 'paused' }), REF)).toBe(false)
+  })
+
+  it('clears once the project is scheduled — which is what dragging a blip writes', () => {
+    const stale = { last_session: '2026-01-01T00:00:00Z' }
+    expect(isNeglected(p(stale), REF)).toBe(true)
+    // Dragging the blip outward sets a project deadline…
+    expect(isNeglected(p({ ...stale, deadline: '2026-07-01' }), REF)).toBe(false)
+    // …or, for a project with tasks, moves the driving milestone's `(due …)`.
+    expect(
+      isNeglected(p({ ...stale, tasks: [{ text: 'ship it (due 2026-07-01)', done: false }] }), REF)
+    ).toBe(false)
+  })
+
+  it('never double-counts an overdue project as neglected too', () => {
+    // It is already surfaced in the attention panel's overdue list; one problem, one row.
+    const overdue = p({ last_session: '2026-01-01T00:00:00Z', deadline: '2026-02-01' })
+    expect(isNeglected(overdue, REF)).toBe(false)
+  })
+
+  it('a drag onto a real ring is enough to clear it — the whole gesture, end to end', () => {
+    // The reported bug: a neglected blip could not be cleared by anything in the app.
+    // A neglected project is undated, so it sits in the SOMEDAY band at the rim; dragging it
+    // INWARD onto a dated ring is what schedules it. Compose the real drop handler's math
+    // with the real predicate and check the loop actually closes.
+    const stale = p({ last_session: '2026-01-01T00:00:00Z' })
+    expect(isNeglected(stale, REF)).toBe(true)
+
+    const dropOnOneMonth = radiusFracForDays(30)
+    const sched = scheduleForDrop(dropOnOneMonth)
+    expect(sched.deadline).not.toBeNull()
+    expect(isNeglected({ ...stale, deadline: sched.deadline! }, REF)).toBe(false)
+
+    // Dropping back out in the someday band clears the date again — parking something is not
+    // scheduling it, so it correctly returns to the neglected list.
+    const parked = scheduleForDrop(0.99)
+    expect(parked.deadline).toBeNull()
+    expect(isNeglected({ ...stale, horizon: parked.horizon ?? 'someday' }, REF)).toBe(true)
+  })
+
+  it('still flags a stale project whose only dated task is already done', () => {
+    const p1 = p({ last_session: '2026-01-01T00:00:00Z', tasks: [{ text: 'old (due 2026-02-01)', done: true }] })
+    expect(isNeglected(p1, REF)).toBe(true)
+  })
+})
+
+describe('nextAction + the archive shelf', () => {
+  it('is the first unchecked task, with its (due …) marker stripped for display', () => {
+    expect(
+      nextAction(
+        p({
+          tasks: [
+            { text: 'done thing', done: true },
+            { text: 'ship it (due 2026-07-01)', done: false },
+            { text: 'later', done: false }
+          ]
+        })
+      )
+    ).toBe('ship it')
+    expect(nextAction(p({ tasks: [{ text: 'all done', done: true }] }))).toBeUndefined()
+    expect(nextAction(p())).toBeUndefined()
+  })
+
+  it('surfaces archived and shipped projects, which every other selector hides', () => {
+    const all = [
+      p({ blipPath: '/a', name: 'Aye', status: 'archived' }),
+      p({ blipPath: '/b', name: 'Bee', status: 'shipped' }),
+      p({ blipPath: '/c', name: 'Cee', status: 'active' }),
+      p({ blipPath: '/g', name: 'Ghost', status: 'archived', ghost: true })
+    ]
+    expect(archivedProjects(all).map((x) => x.name)).toEqual(['Aye'])
+    expect(shippedProjects(all).map((x) => x.name)).toEqual(['Bee'])
+    // …and they are exactly the ones the radar and the list views drop.
+    expect(projectsOnRadar(all).map((x) => x.name)).toEqual(['Bee', 'Cee'])
   })
 })
 

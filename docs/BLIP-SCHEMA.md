@@ -19,7 +19,6 @@ priority: 1
 category: Product
 status: active
 operation: TerraByte
-next_action: "Wire BLIP.md scan into the radar"
 created: 2026-05-25
 last_session: 2026-05-25T18:30:00-04:00
 radar_angle: 123.5
@@ -29,16 +28,15 @@ links:
 ---
 
 # Tasks
-<!-- RADAR-owned checklist. Edited by the app and `radar-blip task ...`. -->
-- [x] Decide architecture
+<!-- RADAR-owned checklist, in priority order. The first unchecked task is the next action. -->
 - [ ] Scaffold the Electron app
 - [ ] Port the radar to React
+- [x] Decide architecture
 
 # Session log
-<!-- Append-only. `radar-blip handoff` adds a dated entry; prior entries are never rewritten. -->
+<!-- Append-only. `radar-blip sync`/`handoff` add a dated entry; prior entries are never rewritten. -->
 ## 2026-05-25 — Ada + Claude
 - Locked the shared-engine architecture.
-- Next: build blip-core.
 
 # Notes
 <!-- HUMAN-ONLY. Tooling never reads meaning from or rewrites this section. -->
@@ -58,13 +56,24 @@ Whiteboard sketch lives in the bedroom.
 | `category` | string | free text (e.g. `Client`, `Product`, `Admin`) | **RADAR** | radar **blip color** |
 | `status` | string | `active` \| `paused` \| `blocked` \| `shipped` \| `archived` | **RADAR** | radar styling / filtering |
 | `operation` | string | free text | **RADAR** | reserved for the future operations **sector-zoom** (round-trips + editable today; nothing renders it yet) |
-| `next_action` | string | one short imperative line | **RADAR** | queue subtitle |
 | `radar_angle` | number | degrees `[0, 360)` | **RADAR** (app) | a **pinned** blip bearing (visual only; set by dragging — never reassigns the project) |
 | `created` | date | `YYYY-MM-DD` | engine (set once on `init`) | — |
-| `last_session` | datetime | ISO 8601 | engine (set by `handoff`) | recency / staleness |
+| `last_session` | datetime | ISO 8601 | engine (set by `sync`/`handoff`) | recency / staleness; also the default `--since` window for `radar-blip sessions` |
 | `tags` | string[] | any | user | filtering |
 | `links` | string[] / objects | URLs or `{label: url}` | user | detail view |
 | *(any other key)* | — | — | **preserved verbatim** | — |
+
+### Retired: `next_action`
+
+There is no `next_action` field. **The task queue is the plan** — tasks sit in priority order and
+the **first unchecked task *is* the project's next action**, so a second place to write "what's
+next" could only ever drift out of sync with the first.
+
+Files written before v1.1 may still carry the key. Nothing reads it, and the **first write of any
+kind migrates it**: its text becomes task #1 (unless an equivalent task already exists — matching
+ignores case, spacing, and a `(due …)` tail) and the key is deleted. The migration is idempotent,
+runs inside the same atomic write as whatever else you were doing, and never fires on a read or on
+a file whose frontmatter fails to parse.
 
 **Defaults when a field is missing on read:** `horizon: someday`, `priority: 3`, `category: ""`, `status: active`, `name: <folder name>`. `deadline`, `operation`, and `radar_angle` are optional and stay missing when absent. `radar_angle` is normalized into `[0, 360)` on read; a non-numeric value is dropped. A `deadline` that isn't a parseable date is ignored by the radar (and rejected at the CLI).
 
@@ -75,7 +84,7 @@ Whiteboard sketch lives in the bedroom.
 The body is parsed by top-level (`#`) headings. Three heading names are meaningful (case-insensitive); **every other section, and any text before the first heading, is preserved untouched.**
 
 - **`# Tasks`** — RADAR-owned GFM checklist (`- [ ]` / `- [x]`). Managed by the app and `radar-blip task add|done|undone|toggle|rm|list` (the app additionally edits task text in place via the engine). Open tasks become the **ship-markers** inside a project's fleet ring. A task may carry an optional trailing **`(due …)`** marker (e.g. `- [ ] Pay invoice (due 2026-07-01)` or `(due friday)`) — chrono-parsed by the app. **These task dues are where deadlines live:** the *soonest* incomplete task `(due …)` drives the whole blip's radar distance (its next milestone), tints that task's ship by urgency, and surfaces it in the NOW overdue panel. The engine keeps the text verbatim. A leading HTML comment is preserved.
-- **`# Session log`** — append-only. `radar-blip handoff` adds a dated `## YYYY-MM-DD — <author>` entry and updates `last_session` + `next_action`. Prior entries are never edited or reordered.
+- **`# Session log`** — append-only. `radar-blip sync` (or `handoff`) adds a dated `## YYYY-MM-DD — <author>` entry and stamps `last_session`. Prior entries are never edited or reordered.
 - **`# Notes`** — human-only. The engine and skills never rewrite this section or derive behavior from it.
 
 ---

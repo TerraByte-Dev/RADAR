@@ -2,6 +2,7 @@ import type { ProjectRecord } from '@shared/radar'
 import { dayKey, formatDayHeading, parseDateLocal } from './date'
 import { datedDeadlineDays } from './projectRadar'
 import { taskDueDate, taskText } from './taskDue'
+
 import type { View } from '../store/useStore'
 
 const DAY_MS = 86_400_000
@@ -14,9 +15,46 @@ export function projectsOnRadar(projects: ProjectRecord[]): ProjectRecord[] {
   return projects.filter((p) => p.status !== 'archived')
 }
 
-/** A project is "neglected" when untouched longer than `days` (shipped/archived opt out). */
+/** Projects taken off the radar — the archive shelf (archived, plus shipped as a second group). */
+export function archivedProjects(projects: ProjectRecord[]): ProjectRecord[] {
+  return projects
+    .filter((p) => p.status === 'archived' && !p.ghost)
+    .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+}
+
+export function shippedProjects(projects: ProjectRecord[]): ProjectRecord[] {
+  return projects
+    .filter((p) => p.status === 'shipped' && !p.ghost)
+    .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+}
+
+/**
+ * The project's **next action** — simply the head of its task queue. There is no separate
+ * "next action" field: the checklist is the plan, in order, so its first unchecked item is
+ * by definition what to do next. `undefined` when nothing is queued.
+ */
+export function nextAction(p: ProjectRecord): string | undefined {
+  const t = p.tasks.find((task) => !task.done)
+  return t ? taskText(t.text) : undefined
+}
+
+/**
+ * A project is "neglected" when it's drifted: untouched longer than `days` *and* nobody has
+ * scheduled it.
+ *
+ * The scheduling clause is what makes the center ring clearable. `last_session` only moves
+ * when a session is logged, so without it a cold project could never leave the ring from
+ * inside the app no matter what you did to it. A dated driver — a task `(due …)` or a hard
+ * `deadline`, which is exactly what dragging a blip to a new ring writes — means you *have*
+ * dealt with it: it now has a plan and a place on the radar. An overdue driver counts too;
+ * that project is already surfaced by the overdue list, and a blip should never be in both.
+ * `paused` (like `shipped`/`archived`) is a deliberate "not now", not neglect.
+ */
 export function isNeglected(p: ProjectRecord, ref: Date = new Date(), days = 30): boolean {
-  if (p.status === 'archived' || p.status === 'shipped' || p.ghost) return false
+  if (p.status === 'archived' || p.status === 'shipped' || p.status === 'paused' || p.ghost) {
+    return false
+  }
+  if (datedDeadlineDays(p, ref) !== null) return false
   const last = p.last_session ?? p.created
   if (!last) return false
   return (ref.getTime() - new Date(last).getTime()) / DAY_MS > days

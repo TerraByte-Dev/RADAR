@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Check, X } from 'lucide-react'
 import type { ProjectRecord } from '@shared/radar'
-import { projectsForView, viewTitle } from '../lib/selectors'
+import { nextAction, projectsForView, viewTitle } from '../lib/selectors'
 import { categoryColor, projectRelativeDeadline, taskRatio } from '../lib/projectRadar'
 import { useStore } from '../store/useStore'
 
 function ProjectRow({ p, onOpen }: { p: ProjectRecord; onOpen: () => void }): JSX.Element {
   const ratio = taskRatio(p)
+  const next = nextAction(p)
   return (
     <button
       onClick={onOpen}
@@ -21,7 +22,7 @@ function ProjectRow({ p, onOpen }: { p: ProjectRecord; onOpen: () => void }): JS
         <div className="truncate font-mono text-[10px] uppercase tracking-[0.1em] text-faint">
           P{p.priority}
           {p.category && ` · ${p.category}`}
-          {p.next_action && ` · ${p.next_action}`}
+          {next && ` · ${next}`}
         </div>
       </div>
       {p.tasks.length > 0 && (

@@ -38,8 +38,8 @@ const radar: RadarApi = {
     ipcRenderer.invoke(IPC.radarSetFields, blipPath, patch),
   task: (blipPath: string, op: BlipTaskOp): Promise<ProjectRecord> =>
     ipcRenderer.invoke(IPC.radarTask, blipPath, op),
-  handoff: (blipPath: string, lines: string[], next?: string, author?: string): Promise<ProjectRecord> =>
-    ipcRenderer.invoke(IPC.radarHandoff, blipPath, lines, next, author),
+  handoff: (blipPath: string, lines: string[], author?: string): Promise<ProjectRecord> =>
+    ipcRenderer.invoke(IPC.radarHandoff, blipPath, lines, author),
   initProject: (dir: string, opts: InitProjectOptions): Promise<ProjectRecord> =>
     ipcRenderer.invoke(IPC.radarInit, dir, opts),
   inboxAddTask: (text: string): Promise<ProjectRecord> =>

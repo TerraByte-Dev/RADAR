@@ -35,7 +35,6 @@ export interface ProjectRecord {
   category: string
   status: BlipStatus
   operation?: string
-  next_action?: string
   /** Pinned visual bearing in degrees [0, 360); set by dragging the blip. */
   radar_angle?: number
   created?: string
@@ -65,13 +64,17 @@ export interface RadarConfig {
   ignored: string[]
 }
 
-export type BlipTaskAction = 'add' | 'done' | 'undone' | 'toggle' | 'rm' | 'edit'
+export type BlipTaskAction = 'add' | 'done' | 'undone' | 'toggle' | 'rm' | 'edit' | 'mv'
 
 export interface BlipTaskOp {
   action: BlipTaskAction
   /** 0-based index or exact task text. */
   ref?: number | string
   text?: string
+  /** `add`: insert at the head of the queue (making it the next action). */
+  top?: boolean
+  /** `mv`: the 0-based position to move the task to. */
+  to?: number
 }
 
 /** A patch of managed `BLIP.md` fields. `null` clears an optional field. */
@@ -83,7 +86,6 @@ export interface BlipFieldPatch {
   category?: string
   status?: BlipStatus
   operation?: string | null
-  next_action?: string
   radar_angle?: number | null
   tags?: string[]
 }
@@ -96,7 +98,8 @@ export interface InitProjectOptions {
   category?: string
   deadline?: string
   operation?: string
-  next_action?: string
+  /** The first task in the queue — this project's opening next action. */
+  first_task?: string
 }
 
 /** The typed surface exposed on `window.radar` by the preload script. */
@@ -109,8 +112,8 @@ export interface RadarApi {
   setFields(blipPath: string, patch: BlipFieldPatch): Promise<ProjectRecord>
   /** Mutate the project's `# Tasks` checklist. */
   task(blipPath: string, op: BlipTaskOp): Promise<ProjectRecord>
-  /** Append a dated `# Session log` entry and update `next_action` + `last_session`. */
-  handoff(blipPath: string, lines: string[], next?: string, author?: string): Promise<ProjectRecord>
+  /** Append a dated `# Session log` entry and stamp `last_session`. */
+  handoff(blipPath: string, lines: string[], author?: string): Promise<ProjectRecord>
   /** Create a `BLIP.md` in `dir` (adopts a folder / ghost). */
   initProject(dir: string, opts: InitProjectOptions): Promise<ProjectRecord>
   /** Append a task to the app-managed Inbox `BLIP.md` (universal capture). */

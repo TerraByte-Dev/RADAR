@@ -123,12 +123,24 @@ describe('write ops (engine round-trip through the main layer)', () => {
     expect(rec.tasks.find((t) => t.text === 'two')?.done).toBe(true)
   })
 
-  it('handoff appends a session entry and updates next_action', async () => {
+  it('handoff appends a session entry and stamps last_session', async () => {
     const blipPath = await freshProject()
-    const rec = await handoff(blipPath, ['did a thing'], 'do the next thing', 'Tester')
-    expect(rec.next_action).toBe('do the next thing')
+    const rec = await handoff(blipPath, ['did a thing'], 'Tester')
     expect(rec.sessionLog).toContain('did a thing')
     expect(rec.last_session).toBeDefined()
+  })
+
+  it('taskOp promotes a task to the head of the queue (the next action)', async () => {
+    const blipPath = await freshProject()
+    await taskOp(blipPath, { action: 'add', text: 'three' })
+    const rec = await taskOp(blipPath, { action: 'mv', ref: 'three', to: 0 })
+    expect(rec.tasks[0]?.text).toBe('three')
+  })
+
+  it('taskOp add --top inserts at the head', async () => {
+    const blipPath = await freshProject()
+    const rec = await taskOp(blipPath, { action: 'add', text: 'urgent', top: true })
+    expect(rec.tasks[0]?.text).toBe('urgent')
   })
 
   it('initProject creates a BLIP.md named from the folder', async () => {
