@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowUpToLine, Check, ExternalLink, FolderOpen, RotateCcw, Sparkles, X } from 'lucide-react'
 import type { BlipStatus, Horizon, ProjectRecord } from '@shared/radar'
 import { BLIP_STATUSES, HORIZONS } from '@shared/radar'
@@ -13,6 +13,48 @@ const PRIORITIES = [1, 2, 3, 4, 5]
 function Label({ children }: { children: React.ReactNode }): JSX.Element {
   return (
     <div className="mb-1 font-mono text-[9px] uppercase tracking-[0.16em] text-faint">{children}</div>
+  )
+}
+
+/**
+ * A committed-on-blur date field. `<input type="date">` fires `change` for every keystroke that
+ * leaves a *complete* valid date, so typing a year emits four of them — writing `0002-08-12`,
+ * `0020-08-12` and `0202-08-12` into the BLIP.md on the way to the real date. Each of those was a
+ * full atomic write, and they raced each other because nothing awaited them. Same shape as
+ * `TextField`: edit locally, commit once. `key` on the caller resyncs it when the record changes.
+ */
+function DateField({
+  value,
+  title,
+  className,
+  onCommit
+}: {
+  value: string
+  title?: string
+  className: string
+  onCommit: (v: string | null) => void
+}): JSX.Element {
+  const [v, setV] = useState(value)
+  const commit = (): void => {
+    if (v !== value) onCommit(v || null)
+  }
+  // Escape closes the whole detail panel, and a watcher rescan can replace the row underneath an
+  // open field — both unmount it. Flush on the way out so a typed date is never silently dropped.
+  const latest = useRef(commit)
+  latest.current = commit
+  useEffect(() => () => latest.current(), [])
+  return (
+    <input
+      type="date"
+      value={v}
+      title={title}
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+      }}
+      className={className}
+    />
   )
 }
 
@@ -147,10 +189,10 @@ export function ProjectDetail({
 
             <div className="col-span-2">
               <Label>Hard deadline · optional</Label>
-              <input
-                type="date"
+              <DateField
+                key={p.deadline?.slice(0, 10) ?? ''}
                 value={p.deadline?.slice(0, 10) ?? ''}
-                onChange={(e) => setFields(p.blipPath, { deadline: e.target.value || null })}
+                onCommit={(v) => setFields(p.blipPath, { deadline: v })}
                 className="w-full border border-rule bg-lcd px-2 py-1 font-mono text-[12px] text-ink outline-none focus:border-phosphor"
               />
               <div className="mt-1 font-mono text-[9px] leading-snug text-faint">
@@ -264,12 +306,16 @@ export function ProjectDetail({
                       </button>
                     )}
                     {!t.done && (
-                      <input
-                        type="date"
+                      <DateField
+                        // Keyed and referenced by the task's own text, not its index: the commit
+                        // now lands on blur rather than per keystroke, so a rescan can reorder the
+                        // queue in between. A text ref follows the task; a stale one throws and the
+                        // store resyncs, instead of quietly dating whatever slid into slot `i`.
+                        key={t.text}
                         value={due ?? ''}
                         title={due ? `due ${due}` : 'set a due date'}
-                        onChange={(e) =>
-                          taskOp(p.blipPath, { action: 'edit', ref: i, text: setTaskDue(t.text, e.target.value || null) })
+                        onCommit={(v) =>
+                          taskOp(p.blipPath, { action: 'edit', ref: t.text, text: setTaskDue(t.text, v) })
                         }
                         className={`w-[6.7rem] shrink-0 border border-rule bg-lcd px-1 py-0.5 font-mono text-[10px] outline-none focus:border-phosphor ${
                           urg === 'overdue'

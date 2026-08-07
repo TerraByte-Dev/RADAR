@@ -29,14 +29,41 @@ export function taskText(text: string, ref: Date = new Date()): string {
   return taskDueDate(text, ref) ? text.replace(DUE_RE, '').trim() : text.trim()
 }
 
+const pad = (n: number): string => String(n).padStart(2, '0')
+const dayOf = (ref: Date): string =>
+  `${ref.getFullYear()}-${pad(ref.getMonth() + 1)}-${pad(ref.getDate())}`
+
+/**
+ * Parsed `(due …)` phrases. A chrono parse costs ~28 µs and the same immutable task lines get
+ * re-parsed constantly — the urgency sort comparator, `taskText`, the detail panel and the radar's
+ * per-blip radius all ask the same question of the same string.
+ *
+ * Keyed by phrase **and reference hour**, not just the day: most phrases ("friday", "2026-07-01")
+ * resolve identically all day, but a duration ("in 3 hours") crosses midnight from a late-enough
+ * reference, so a day-only key would freeze the wrong answer until tomorrow. The hour is fine
+ * enough to keep those honest and still coarse enough to collapse the repeat traffic, which
+ * arrives many times per second.
+ */
+const dueCache = new Map<string, string | null>()
+let dueCacheKey = ''
+
 /** Parse a task's `(due …)` marker → local ISO `YYYY-MM-DD`, or null when absent/unparseable. */
 export function taskDueDate(text: string, ref: Date = new Date()): string | null {
   const m = DUE_RE.exec(text)
   if (!m) return null
-  const d = chrono.parseDate(m[1]!.trim(), ref, { forwardDate: true })
-  if (!d || Number.isNaN(d.getTime())) return null
-  const p = (n: number): string => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  const key = `${dayOf(ref)}T${ref.getHours()}`
+  if (key !== dueCacheKey) {
+    dueCache.clear() // the reference moved — what "friday" or "in 3 hours" means moved with it
+    dueCacheKey = key
+  }
+  const phrase = m[1]!.trim()
+  const hit = dueCache.get(phrase)
+  if (hit !== undefined) return hit
+  const d = chrono.parseDate(phrase, ref, { forwardDate: true })
+  const iso =
+    !d || Number.isNaN(d.getTime()) ? null : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  dueCache.set(phrase, iso)
+  return iso
 }
 
 export type Urgency = 'overdue' | 'soon' | 'later'
