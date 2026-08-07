@@ -29,3 +29,6 @@ publish:
   provider: github
   owner: TerraByte-Dev
   repo: RADAR
+  # electron-builder defaults to a DRAFT release, and electron-updater cannot see drafts — the
+  # update would upload correctly and reach nobody. Publish straight to a real release instead.
+  releaseType: release

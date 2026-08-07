@@ -1,4 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// Count real chrono parses so the cache is observable — the wrapper delegates, so behavior is
+// identical and every other test in this file is unaffected.
+const parses = { n: 0 }
+vi.mock('chrono-node', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('chrono-node')>()
+  return { ...actual, parseDate: (...a: Parameters<typeof actual.parseDate>) => { parses.n++; return actual.parseDate(...a) } }
+})
 import {
   drivingTask,
   nearestTaskDue,
@@ -90,5 +98,36 @@ describe('setTaskDue', () => {
     expect(setTaskDue('Call Bob (due diligence review) (due 2026-07-01)', null)).toBe(
       'Call Bob (due diligence review)'
     )
+  })
+})
+
+describe('taskDueDate — the chrono parse is cached per (reference hour, phrase)', () => {
+  it('parses a repeated phrase once, and still answers correctly', () => {
+    const ref = new Date('2026-08-07T12:00:00')
+    taskDueDate('Ship the build (due next tuesday)', ref) // priming parse (also resets the table)
+    const before = parses.n
+    const again = taskDueDate('Write the notes (due next tuesday)', ref)
+    expect(parses.n).toBe(before) // served from the cache
+    expect(again).toBe(taskDueDate('Ship the build (due next tuesday)', ref))
+  })
+
+  it('caches the null for an unparseable tail instead of re-parsing it', () => {
+    const ref = new Date('2026-08-07T13:00:00')
+    expect(taskDueDate('Call Bob (due diligence review)', ref)).toBeNull()
+    const before = parses.n
+    expect(taskDueDate('Call Ann (due diligence review)', ref)).toBeNull()
+    expect(parses.n).toBe(before)
+  })
+
+  it('re-resolves a relative phrase when the reference day moves', () => {
+    // A stale cache would hand back the first Monday for both.
+    expect(taskDueDate('Ship it (due monday)', new Date('2026-08-07T12:00:00'))).toBe('2026-08-10')
+    expect(taskDueDate('Ship it (due monday)', new Date('2026-08-14T12:00:00'))).toBe('2026-08-17')
+  })
+
+  it('re-resolves when only the hour moves — a duration can cross midnight', () => {
+    // 09:00 + 3h is still the 7th; 23:00 + 3h is the 8th. A day-only key would freeze the first.
+    expect(taskDueDate('Deploy (due in 3 hours)', new Date('2026-08-07T09:00:00'))).toBe('2026-08-07')
+    expect(taskDueDate('Deploy (due in 3 hours)', new Date('2026-08-07T23:00:00'))).toBe('2026-08-08')
   })
 })

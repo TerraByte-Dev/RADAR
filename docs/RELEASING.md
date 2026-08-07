@@ -6,8 +6,10 @@ RADAR ships as **two artifacts**:
    on-ramp: anyone can `npm i -g radar-blip` and feed their projects from Claude Code / Codex.
 2. **RADAR desktop app** — the flagship radar, packaged as signed installers with auto-update.
 
-Bump versions first: the app version in `package.json`, the engine version in
-`packages/blip-core/package.json`. Tag the release commit (`vX.Y.Z`).
+Bump the **app** version in `package.json` every release. Bump the **engine** version in
+`packages/blip-core/package.json` only when `packages/blip-core/` actually changed — an app-only
+release (2.0.2, say) leaves the engine where it is rather than republishing identical bytes under a
+new number. Tag the release commit (`vX.Y.Z`).
 
 ---
 
@@ -93,10 +95,15 @@ This uploads the installers + the `latest*.yml` update manifests to a GitHub Rel
 
 ## Checklist
 
-- [ ] Bump app + engine versions; move the `CHANGELOG.md` **[Unreleased]** section under the
-      new version heading.
+- [ ] Bump the app version (and the engine's only if `packages/blip-core/` changed); move the
+      `CHANGELOG.md` **[Unreleased]** section under the new version heading.
 - [ ] `npm run typecheck && npm test && npm run build` green.
+- [ ] Merge to `main`, then `git tag vX.Y.Z && git push origin vX.Y.Z` **before** publishing —
+      otherwise electron-builder creates the tag itself, pointing at whatever `main` was.
 - [ ] `npm publish` the engine (if it changed).
 - [ ] `electron-builder --publish always` with signing creds + `GH_TOKEN`.
 - [ ] Verify the GitHub Release has installers + `latest.yml` / `latest-mac.yml` / `latest-linux.yml`.
+- [ ] Verify the release is **not a draft** — `gh release view vX.Y.Z --json isDraft,isPrerelease`
+      must return `{"isDraft":false,"isPrerelease":false}`. electron-updater cannot see a draft, so
+      a drafted release ships to nobody and looks exactly like "no update available".
 - [ ] Smoke-test auto-update from the previous version.

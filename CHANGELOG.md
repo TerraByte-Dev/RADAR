@@ -1,10 +1,77 @@
 # Changelog
 
 All notable changes to RADAR. Format follows [Keep a Changelog](https://keepachangelog.com/);
-versions follow [SemVer](https://semver.org/). The `radar-blip` engine is versioned with the app
-until it stabilizes.
+versions follow [SemVer](https://semver.org/). The `radar-blip` engine tracks the app's version
+while it stabilizes, but only moves in releases that actually change it — an app-only release
+leaves the published engine where it is.
 
 ## [Unreleased]
+
+## [2.0.2] — 2026-08-06
+
+App-only — the `radar-blip` engine is unchanged and stays at 2.0.1 on npm.
+
+### Fixed
+
+- **Every task edit spiked the CPU, and the file watcher was the reason.** `startWatch` passed
+  chokidar **glob** targets (`<root>/**/BLIP.md`). chokidar@3 applies its 1 s per-directory
+  readdir throttle *only* to non-glob targets — `hasGlob` is set whenever the watch path differs
+  from the resolved parent, and `nodefs-handler.js#_handleRead` skips the throttle for it
+  entirely. So every raw change notification spawned a full `readdirp`: an `lstat` per dirent plus
+  a micromatch evaluation against the glob. One atomic `BLIP.md` write fires ~10 notifications, so
+  a single checkbox click paid that storm ten times over — measured at **4.5× the CPU** of the
+  fixed path on an 8-project fixture, and far worse on a real workspace. It also starved the libuv
+  threadpool the write itself was using, so the write slowed from ~4 ms to ~25 ms. The main thread
+  never blocked, which is why it presented as fans and lag rather than a freeze.
+  > Self-write suppression could never have helped: `isSelfWriteEcho` runs *after* chokidar has
+  > already paid. Exactly one `change` was emitted per write and it was correctly swallowed.
+  The watcher now watches the plain roots and filters by basename — which is also the shape
+  chokidar 4 requires, since it removed glob support.
+- **The watcher walked into every project it had already found.** `makeIgnored` mirrored the
+  scanner's `SKIP_DIRS` + dot-dir rules but not its **boundaries**: `classify()` stops descending
+  at a project (`BLIP.md`) or ghost (`.git`/`CLAUDE.md`/`AGENTS.md`) directory, and the watcher did
+  not — so it walked, and held a watch handle on, the entire source tree of every blip it had
+  already found. On a real 11-root workspace that was **1,492 directories and 30,362 files; with
+  parity it is 15 and 12**, matching the scanner. The rule is applied to the root itself too, since
+  a root is usually a single project folder rather than a container of them. A boundary directory
+  still watches its own `BLIP.md` — that file is the entire point.
+- **Typing a due date wrote a garbage date to disk, several times.** `<input type="date">` fires
+  `change` for every keystroke that leaves a *complete* valid date, so typing a year emitted four
+  of them — atomically persisting `(due 0002-08-12)`, `(due 0020-08-12)` and `(due 0202-08-12)` on
+  the way to the real date, in unawaited writes that raced each other. Both date inputs (a task's
+  `(due …)` and the project `deadline`) now commit on blur — and on unmount, so closing the panel
+  with Escape flushes the edit rather than dropping it — the same shape `TextField` already used
+  for text. Because the commit is now deferred, a task's date is referenced by its **text** rather
+  than its list index: a rescan can reorder the queue between focus and blur, and a stale text ref
+  fails loudly into a resync instead of quietly dating whatever slid into that slot.
+- **The watcher could take the main process down.** `chokidar.watch(...)` had no `error` listener,
+  and an unhandled `error` on an EventEmitter throws. A root that disappears mid-session (an
+  unplugged drive, a renamed folder) now warns instead.
+- **Adopting or deleting a project left the watcher's boundary map stale.** Only `addRoot` and
+  `removeRoot` rebuilt the watcher, so deleting a `BLIP.md` — which makes the scanner start
+  descending into that folder again — left any blip nested underneath it invisible to the live
+  loop, silently. `radar:init` and `radar:delete` now rewatch too.
+
+### Changed
+
+- **The radar's per-frame date math moved into a memo.** `frame()` recomputed each blip's radius
+  and layout fraction per contact per frame, and the layout cache built its *signature* by calling
+  `deadlineWholeDays` — the key cost more than the value it guarded. That dragged a chrono parse of
+  every dated task into all 60 frames a second (~1.2 ms/frame, 7.4% of a core). Now computed once
+  per `(contacts, nowTick)` alongside `shipColors` — the same 2-minute tick the ship colours and
+  the attention panel already used.
+- **`taskDueDate` memoizes its chrono parse.** The same immutable task lines were re-parsed by the
+  urgency sort comparator, `taskText`, the detail panel and the radar. Keyed by phrase *and
+  reference hour*, so a duration like `(due in 3 hours)` still crosses midnight correctly instead
+  of being frozen to the day it was first parsed on.
+
+### Known — not fixed here
+
+- **The radar canvas still repaints at 60 fps whether or not anything changed** (~190% of a core
+  while the radar view is on screen; it drops to ~15% on any other view and ~0.3% minimized).
+  The static backdrop — gradient, rings, wedges, spokes, ticks, labels — depends only on radius,
+  DPR, palette and categories, and belongs on an offscreen canvas drawn once. Deliberately held
+  back: it is the largest change of the set and wants visual review rather than a hotfix.
 
 ## [2.0.1] — 2026-08-06
 

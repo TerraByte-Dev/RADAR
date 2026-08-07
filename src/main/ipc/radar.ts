@@ -100,11 +100,17 @@ export function registerRadarHandlers(getWindow: () => BrowserWindow | null): ()
   ipcMain.handle(IPC.radarHandoff, (_e, blipPath: string, lines: string[], author?: string) =>
     handoff(guardBlip(blipPath), lines, author)
   )
-  ipcMain.handle(IPC.radarInit, async (_e, dir: string, opts: InitProjectOptions) =>
-    initProject(await assertInitDir(dir), opts)
-  )
+  // Adopting and deleting both change where the *scanner's* project/ghost boundaries fall, and the
+  // watcher caches those for its lifetime — so it has to be rebuilt, or a folder that just stopped
+  // being a boundary keeps its nested blips invisible to the live loop (silently, with no error).
+  ipcMain.handle(IPC.radarInit, async (_e, dir: string, opts: InitProjectOptions) => {
+    const rec = await initProject(await assertInitDir(dir), opts)
+    rewatch(getWindow)
+    return rec
+  })
   ipcMain.handle(IPC.radarDelete, async (_e, blipPath: string) => {
     await deleteProject(guardBlip(blipPath))
+    rewatch(getWindow)
     void scanAndPush(getWindow)
   })
   ipcMain.handle(IPC.radarInboxAdd, (_e, text: string) => inboxAddTask(getConfig().workspace, text))

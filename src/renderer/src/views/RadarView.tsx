@@ -168,6 +168,24 @@ export function RadarView(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contacts, nowTick, neglectedDays])
 
+  // Radius + layout fractions per blip. Same reasoning as `shipColors`: these depend only on
+  // (contacts, today), never on the frame clock — but `frame()` was recomputing them per contact
+  // per frame, and the layout cache's own *signature* called `deadlineWholeDays` to build the key,
+  // so the key cost more than the value it guarded. That dragged a full chrono parse of every
+  // dated task into all 60 frames a second.
+  const geometryById = useMemo(() => {
+    const ref = new Date()
+    const map = new Map<string, { radius: number; layout: number; whole: number | null }>()
+    for (const p of contacts)
+      map.set(p.blipPath, {
+        radius: projectRadiusFrac(p, ref),
+        layout: projectLayoutFrac(p, ref),
+        whole: deadlineWholeDays(p, ref)
+      })
+    return map
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contacts, nowTick])
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef({
     contacts,
@@ -175,6 +193,7 @@ export function RadarView(): JSX.Element {
     selectedBlip,
     hoveredId: null as string | null,
     shipColors,
+    geometryById,
     attnCount: attention.total,
     attnRed: attention.red,
     attnLabel: attention.label
@@ -185,6 +204,7 @@ export function RadarView(): JSX.Element {
     selectedBlip,
     hoveredId: stateRef.current.hoveredId,
     shipColors,
+    geometryById,
     attnCount: attention.total,
     attnRed: attention.red,
     attnLabel: attention.label
@@ -296,8 +316,17 @@ export function RadarView(): JSX.Element {
       last = now
       if (!reduce) sweep += (360 / 7) * dt
       const ref = new Date()
-      const { contacts, sectorByKey, selectedBlip, hoveredId, shipColors, attnCount, attnRed, attnLabel } =
-        stateRef.current
+      const {
+        contacts,
+        sectorByKey,
+        selectedBlip,
+        hoveredId,
+        shipColors,
+        geometryById,
+        attnCount,
+        attnRed,
+        attnLabel
+      } = stateRef.current
       const acc = paletteRef.current.accent
       const ink = paletteRef.current.ink
 
@@ -439,6 +468,16 @@ export function RadarView(): JSX.Element {
       const anyDragging = !!drag && drag.moved && mouseRef.current.inside
       const wedgeSpacing = 360 / Math.max(sectorByKey.size, 1)
       const baseOf = (p: ProjectRecord): number => sectorByKey.get(p.category || NO_CATEGORY) ?? 0
+      // Precomputed in the `geometryById` memo, which is assigned into `stateRef` alongside
+      // `contacts` in the same render — so the fallback is belt-and-braces, not a real race.
+      const geom = (
+        p: ProjectRecord
+      ): { radius: number; layout: number; whole: number | null } =>
+        geometryById.get(p.blipPath) ?? {
+          radius: projectRadiusFrac(p, ref),
+          layout: projectLayoutFrac(p, ref),
+          whole: deadlineWholeDays(p, ref)
+        }
       let angleById: Map<string, number>
       if (anyDragging && drag) {
         const mdx = mouseRef.current.x - cx
@@ -451,7 +490,7 @@ export function RadarView(): JSX.Element {
               ? { id: p.blipPath, frac: liveFrac, base: baseOf(p), size: prioSize(p.priority), override: liveAngle }
               : {
                   id: p.blipPath,
-                  frac: projectLayoutFrac(p, ref),
+                  frac: geom(p).layout,
                   base: baseOf(p),
                   size: prioSize(p.priority),
                   override: p.radar_angle ?? null
@@ -465,7 +504,7 @@ export function RadarView(): JSX.Element {
           contacts
             .map(
               (p) =>
-                `${p.blipPath},${p.category},${p.radar_angle ?? '-'},${deadlineWholeDays(p, ref) ?? 's'},${p.priority}`
+                `${p.blipPath},${p.category},${p.radar_angle ?? '-'},${geom(p).whole ?? 's'},${p.priority}`
             )
             .join(';')
         if (layoutCacheRef.current.sig !== sig) {
@@ -474,7 +513,7 @@ export function RadarView(): JSX.Element {
             map: layoutBlipAngles(
               contacts.map((p) => ({
                 id: p.blipPath,
-                frac: projectLayoutFrac(p, ref),
+                frac: geom(p).layout,
                 base: baseOf(p),
                 size: prioSize(p.priority),
                 override: p.radar_angle ?? null
@@ -496,7 +535,7 @@ export function RadarView(): JSX.Element {
           x = mouseRef.current.x
           y = mouseRef.current.y
         } else {
-          ;[x, y] = pt(projectRadiusFrac(proj, ref) * R, angle)
+          ;[x, y] = pt(geom(proj).radius * R, angle)
         }
         const color = proj.error
           ? SIGNAL_LOST
