@@ -1,4 +1,4 @@
-// scripts/doctor.mjs — verify the `radar-blip` workspace link resolves.
+// scripts/check-workspace.mjs — verify the `radar-blip` workspace link resolves.
 //
 // npm workspaces symlink `node_modules/radar-blip` -> `packages/blip-core` using an
 // ABSOLUTE path. Moving the repo on disk leaves that link dangling, which surfaces
