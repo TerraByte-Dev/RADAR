@@ -193,7 +193,9 @@ export async function filterOverrides(git: Git, dir: string, timeoutMs = 2000): 
 export async function gitUserName(git: Git | null, dir: string | null): Promise<string | null> {
   if (!git) return null;
   try {
-    const name = (await git.run(dir ?? dataDir(), dir ? ['config', 'user.name'] : ['config', '--global', 'user.name'], 2000)).trim();
+    // -C needs a folder that exists; before the data folder is made, the global lookup runs from temp
+    const at = dir ?? (existsSync(dataDir()) ? dataDir() : tmpdir());
+    const name = (await git.run(at, dir ? ['config', 'user.name'] : ['config', '--global', 'user.name'], 2000)).trim();
     return name || null;
   } catch {
     return null;
