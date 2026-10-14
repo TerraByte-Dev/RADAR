@@ -1,0 +1,15 @@
+{
+  "include": ["e2e/**/*", "src/renderer/src/env.d.ts"],
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "paths": { "@shared/*": ["./src/shared/*"] }
+  }
+}

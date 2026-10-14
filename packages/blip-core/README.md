@@ -2,129 +2,134 @@
 
 **Own your project state in a plain Markdown file your AI coding agent keeps current.**
 
-`radar-blip` is the engine + CLI behind [RADAR](https://github.com/TerraByte-Dev/RADAR). Every
-project folder carries a `BLIP.md` — a human-readable, git-friendly state file holding the
-project's horizon, priority, status, task checklist (whose first unchecked item *is* the next
-action), and session log. Your AI
-coding agent (Claude Code or Codex) writes it as you work via the `/blip` skill; the RADAR
-desktop app plots every project as a blip on a radar. One shared engine performs every write —
-atomically, preserving your prose and any unknown keys byte-for-byte.
+`radar-blip` is the engine and CLI behind [RADAR](https://github.com/TerraByte-Dev/RADAR). Every
+tracked project folder carries a `BLIP.md`: one Now line saying where the project stands, a task
+queue whose first open task is the next step, and a newest-first log. Your coding agent (Claude
+Code or Codex) keeps it current through the `/blip` skill; the RADAR desktop app shows every
+project at once. The engine does every write, under a lock, atomically, and copies every byte it
+does not manage.
 
 ## Install
 
 ```sh
-npm i -g radar-blip      # global CLI
-# …or run it without installing:
-npx -y radar-blip <args>
+npm i -g radar-blip
+radar-blip setup        # the /blip skill and the Claude Code hooks; shows the change and asks first
+radar-blip doctor       # checks that everything is in place
 ```
 
-## Install the /blip skill
+The RADAR desktop app ships its own copy of the CLI and runs the same setup from its first-run
+screen; with the app there is no need for the npm package.
 
-```sh
-radar-blip skills install            # Claude Code + Codex (both)
-radar-blip skills install --claude   # just Claude Code  → ~/.claude/skills/blip/SKILL.md
-radar-blip skills install --codex    # just Codex        → ~/.codex/prompts/blip.md
-```
+`setup` installs:
 
-Then run `/blip` in any project from your coding agent to capture a handoff. Re-run with
-`--force` to overwrite an existing install.
+- the `/blip` skill at `~/.claude/skills/blip/SKILL.md` (or under `CLAUDE_CONFIG_DIR`), and the
+  Codex prompt at `~/.codex/prompts/blip.md` when Codex is installed (`CODEX_HOME` is honoured);
+- three Claude Code hooks in `settings.json`: `SessionStart`, `Stop` and `SessionEnd`, each
+  `radar-blip hook <event>`. Only RADAR's own entries are added or replaced; every other byte of
+  the file stays as it was, and the original is copied to `settings.json.radar-bak` first.
+
+It is safe to run again: a machine that is already set up prints `Already set up.` Without a
+terminal it needs `--yes`; `--dry-run` only prints. `radar-blip setup --remove` takes the hooks
+and RADAR's skill files out again.
+
+## How the loop works
+
+1. **SessionStart** tells the agent the project's Now line and next task, and says so when there
+   are commits nobody has logged yet.
+2. **Stop** looks at the files the session edited and the commits it made, maps each to its
+   project (a linked git worktree maps to its main checkout), and asks the agent to sync when one
+   project has a commit or three edited files that are not in its log. It asks about one project
+   at a time, and about the same project at most once every 20 minutes. A read-only session is
+   never asked.
+3. The agent runs `radar-blip brief`, writes one JSON payload, and runs `radar-blip sync`.
+
+The hooks never block a session they do not understand: any problem means no output and exit 0.
 
 ## Commands
 
 ```
-radar-blip init     [--name N] [--horizon today|week|someday] [--priority 1-5] [--category C] [--status S] [--task "first step"] [--deadline YYYY-MM-DD] [--operation O] [--force]
-radar-blip show     [--json]
-radar-blip set      [--horizon H] [--priority 1-5] [--category C] [--status S] [--deadline YYYY-MM-DD] [--operation O] [--name N] [--tag T …]
-radar-blip task     add "text" [--top] | done|undone|toggle|rm <n|text> | mv <n|text> <to> | list
-radar-blip handoff  [--line "did X" --line "did Y"] [--summary "…"] [--author A]
-radar-blip sync     [--file payload.json | --json '…'] [--dry-run]   # one atomic reconciliation
-radar-blip sessions [--since ISO] [--limit N] [--json]              # digest this folder's AI sessions
-radar-blip hook stop                                                # Claude Code Stop hook
-radar-blip skills install [--claude] [--codex] [--force]
+radar-blip init [--name N] [--now TEXT] [--task TITLE]…    start tracking this folder (never overwrites)
+radar-blip show [--json]                                  the whole project
+radar-blip brief [--json]                                 what an agent reads before a sync (--json is at most 8 KB)
+radar-blip sync (--file PATH | -) [--agent NAME] [--dry-run]   apply one payload
+radar-blip add "title" [--detail LINE]… [--due YYYY-MM-DD] [--top]
+radar-blip done <n | "title">
+radar-blip set <name | status | focus | due | tags> <value>
+radar-blip lint [--all]                                   report problems; never rewrites
+radar-blip migrate [--all] [--dry-run] [--allow-secret-shaped]   rewrite a v2 file as v3, once, with a backup
+radar-blip status [--all] [--json]                        every tracked project, one row each
+radar-blip track [DIR] [--find | --remove | --hide | --show]
+radar-blip setup [--dry-run] [--yes] [--remove]
+radar-blip doctor [--json]
+radar-blip hook <session-start | stop | session-end>      Claude Code hooks (JSON on stdin)
 ```
 
-**The task queue is the plan** — tasks are in priority order and the *first unchecked one is the
-project's next action*. There is no `next_action` field; a legacy one is promoted to task #1 on
-the first write. `--next` still works as a deprecated alias for `task add --top`.
+Every project command takes `--path DIR` (default: the nearest folder above the current one that
+holds a `BLIP.md`) and `--json`. Exit codes: `0` success, `1` usage or a rejected payload
+(nothing written), `2` no project here, `3` the file cannot be written safely, `4` `lint` found
+errors or `doctor` found a failure. `hook` always exits 0.
 
-`sync` takes one JSON reconciliation on stdin (or `--file`/`--json`) and applies the whole thing
-in a single atomic write — session lines, task adds/dones/edits/removals, and field changes.
-Every task ref (a 1-based position or exact text) resolves against the pre-sync state, so ops
-never shift each other, and one bad ref fails the sync without writing a byte.
+### A sync payload
 
-`sessions` reads Claude Code's own transcripts for this folder, so an agent can reconcile against
-what a session *did* rather than what it remembers. It is Claude-Code-specific; nothing else on
-this list depends on it.
+```json
+{ "rev": "5f0c9a1e77b3d204",
+  "now": "Sync is merged but switched off until the conflict screen is designed.",
+  "log": ["Merged the sync engine behind a flag", "Wrote the conflict-screen sketches"],
+  "done": [2, "Renew the signing certificate"],
+  "add": [{ "title": "Design the conflict screen", "detail": ["Two sketches are in design/conflicts.md"], "top": true }] }
+```
 
-Every command operates on `./BLIP.md` by default; target another folder with `--path "DIR"`.
-With no `--author`, `handoff` stamps the session log with your OS username; `--summary` is an
-extra bullet appended after the `--line`s. Flags are space-separated (`--flag value`, quoted if
-multi-word) — `--flag=value` is not supported, and a value may not itself start with `--`.
+A task is named by its number in the `brief` the agent just read (with that brief's `rev`) or by
+its whole title. A payload that breaks a rule is rejected whole, with every problem listed at once.
+`{}` acknowledges that the log already covers the work.
 
 ## What a BLIP.md looks like
 
 ```markdown
 ---
-name: RADAR
-horizon: week          # fuzzy distance fallback: today | week | someday
-priority: 1            # 1 (top) … 5 — blip size
-category: Product      # color + sector on the radar
-status: active         # active | paused | blocked | shipped | archived
-created: 2026-06-01
-last_session: 2026-06-11
-tags: [terrabyte, tooling]
+blip: 3
+name: Lantern Notes
+now: Sync is merged but switched off until the conflict screen is designed.
+status: blocked
+due: 2026-11-18
+tags: [product, mobile]
 ---
 
 # Tasks
 
-- [ ] Publish radar-blip to npm (due 2026-06-20)
-- [x] Delete the legacy task stack
+- [ ] Design the conflict screen so sync can be switched on
+  Two sketches are in design/conflicts.md.
+- [ ] Write the release notes for 4.2
+
+## Done
+
+- [x] Merge the sync engine (done 2026-10-10)
 
 # Session log
 
-## 2026-06-11 — you + your agent
-- Adopted the repo onto its own radar.
-
-# Notes
-
-Anything here is yours — tooling round-trips it byte-for-byte.
+## 2026-10-11 16:48 — Robin + Claude
+- Merged the sync engine behind the sync_v2 flag
 ```
 
-A task may carry a trailing `(due …)` marker — the RADAR app parses it (any chrono-readable
-date) and lets **the soonest incomplete task's due date drive the blip's distance from center**.
-An optional frontmatter `deadline:` is the project-level hard date for task-less blips.
+`name`, `due`, `focus`, `tags`, `links` and the statuses `paused` / `archived` are the owner's;
+agents write `now`, the tasks, the log and the statuses `active` / `blocked`. Last activity,
+drift and branch are worked out from git and file times and never stored. The full format is in
+[docs/BLIP-SCHEMA.md](https://github.com/TerraByte-Dev/RADAR/blob/main/docs/BLIP-SCHEMA.md).
 
-## The BLIP.md guarantee
-
-`radar-blip` owns a known frontmatter subset (`name, horizon, deadline, priority, category,
-status, operation, radar_angle, created, last_session, tags, links`), the
-`# Tasks` checklist, and the append-only `# Session log`. **`# Notes`, any other heading, and
-any unknown frontmatter key are round-tripped verbatim** — fenced code blocks included, so an
-example `# Tasks` inside your notes never fools the engine, and prose or sub-bullets inside the
-real `# Tasks` section survive every checklist edit. Writes are atomic and durable (temp file +
-fsync + rename); the CLI's read-modify-write commands retry on concurrent changes instead of
-clobbering another writer. A file that fails to parse is never overwritten, and one whose
-frontmatter has YAML errors is readable but **read-only** until fixed. Never hand-edit a
-`BLIP.md` — go through `radar-blip` (or the app, or `/blip`); they share this one engine, so
-they can't disagree.
+Everything RADAR keeps besides `BLIP.md` (the project list, locks, backups, removed tasks) lives
+in its data folder: `%APPDATA%\radar-blip` on Windows, `~/Library/Application Support/radar-blip`
+on macOS, `${XDG_DATA_HOME:-~/.local/share}/radar-blip` on Linux, or `RADAR_BLIP_HOME`.
 
 ## Use as a library
 
 ```ts
-import { Blip, readBlip, writeBlipAtomic, updateBlip, createBlip } from 'radar-blip';
+import { buildBrief, parseSyncPayload, syncProject } from 'radar-blip';
 
-const blip = await readBlip('BLIP.md');
-blip.setHorizon('today').addTask('Ship it');
-await writeBlipAtomic('BLIP.md', blip);
-
-// Read-modify-write that can't clobber a concurrent writer: if the file changes
-// between read and write, the mutation is replayed on the fresh content (max 3 tries).
-await updateBlip('BLIP.md', (b) => b.toggleTask('Ship it'));
+const brief = await buildBrief(dir);
+const res = await syncProject(dir, parseSyncPayload({ rev: brief.rev, done: [1] }), { author: 'Robin', agent: 'Claude' });
 ```
 
-Also exported: `detectAuthor`, `Blip.toReadModel()`, the `HORIZONS`/`STATUSES` enums, and the
-types `BlipReadModel`, `SessionEntry`, `CreateBlipOptions`. The package is ESM-only
-(`"type": "module"`); `require('radar-blip')` needs Node ≥ 20.19 / 22.12.
+The package is ESM-only and needs Node 22.12 or later.
 
 ## License
 

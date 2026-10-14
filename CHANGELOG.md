@@ -7,6 +7,102 @@ leaves the published engine where it is.
 
 ## [Unreleased]
 
+## [3.0.0] — unreleased
+
+App and `radar-blip` engine both move to 3.0.0.
+
+RADAR 2 placed every project on a radar by its deadline. Most projects have no real deadline,
+so the main thing on screen was made up, and the overdue and neglected alarms turned a list of
+things you care about into a list of things you were failing at. RADAR 3 answers a different
+question: **what was I doing, and what is the one next step?** Projects are ordered by when work
+last happened, which is read from git and file times rather than typed, and nothing is ever
+overdue.
+
+### Breaking
+
+- **A new `BLIP.md` format (version 3).** A `blip: 3` header key, a one-line `now`, a task
+  queue whose first open task is the next step (with indented detail lines), a `## Done` list,
+  and a newest-first session log. `horizon`, `priority`, `category`, `operation`, `deadline`,
+  `radar_angle` and `last_session` are gone. RADAR 3 reads a version 2 file but never writes to
+  one until you run `radar-blip migrate` on it. See
+  [docs/BLIP-SCHEMA.md](docs/BLIP-SCHEMA.md).
+- **The CLI was rebuilt.** Commands now: `init`, `show`, `brief`, `sync`, `add`, `done`, `set`,
+  `lint`, `migrate`, `status`, `track`, `setup`, `doctor`, `hook`. Removed: `task add|done|
+  undone|toggle|rm|mv` (use `add`, `done`, or a `sync` payload's `reopen`, `remove` and `move`),
+  `sessions` (replaced by `brief` and the hooks), `handoff`, and `skills install` (replaced by
+  `setup`). The `sync` payload is new: it carries the `rev` of the `brief` the agent read, and a
+  payload that breaks any rule is rejected whole.
+- **The hooks changed.** `setup` installs three Claude Code hooks (`SessionStart`, `Stop`,
+  `SessionEnd`) and removes every spelling of the v2 Stop hook. The `/blip` skill is new and
+  writes only version 3 files.
+- **Projects are a list you keep, not folders RADAR scans.** The registry lives in the engine's
+  data folder (`%APPDATA%\radar-blip`, `~/Library/Application Support/radar-blip`,
+  `${XDG_DATA_HOME:-~/.local/share}/radar-blip`, or `RADAR_BLIP_HOME`). RADAR 2's workspace
+  roots, ghost repos and Inbox are not carried over.
+- **Node 22.12 or later** for the `radar-blip` package (2.x needed Node 20). The app is not
+  affected: it bundles its own runtime.
+- **The library API is new.** `buildBrief`, `parseSyncPayload`, `syncProject` and the rest are
+  documented in [packages/blip-core/README.md](packages/blip-core/README.md). The 2.x functions
+  `readBlip`, `updateBlip`, `createBlip` and `writeBlipAtomic` are removed.
+
+### Added
+
+- **Pick up**, the home screen: *Continue* (the project last worked on, its Now line and next
+  step), then every project under This week, Last six weeks, Earlier, Paused and Archived.
+  *Pick one for me* deals from your focus pins, then the rest of this week, and says why.
+- **Re-entry prompts**: copy a prompt that hands a fresh agent the project's state and next
+  step, open the folder in your editor, or copy a prompt that has an agent catch a log up.
+- **A project page**: the Now line edited in place, Mark done and Not now on the next step, a
+  queue you can reorder and filter, log entries, derived facts, and undo.
+- **The Scope**: distance is time since last work, a bearing that never changes, focus pins and
+  live sessions marked.
+- **The Log**: every entry from every project, newest first.
+- **Activity from git and file times**: last work, branch, uncommitted work and "log behind",
+  never stored in the file.
+- **Live sessions**: a Claude Code session working in a project shows as live.
+- **First run** shows the exact diff of what setup will write before it writes anything, and
+  finds the projects already under a folder.
+- **The app ships the CLI**: a `radar-blip` shim in the data folder runs the bundled CLI, with the
+  app's own runtime when no Node 22.12 or later is on PATH, and setup can put it on your user
+  PATH after you confirm.
+- `radar-blip doctor`, `status`, `lint`, `track`, `--version`, and `--json` on every command but `hook`.
+- Light and dark themes, one-line density, a command palette, and a keymap shown in the app.
+- Accessibility: every view passes axe in both themes, works at 200% zoom, and honours reduced
+  motion.
+
+### Removed
+
+- The radar canvas and its deadline rings, priority sizes, category wedges and drag to
+  reschedule; the attention panel and the overdue and neglected alarms.
+- Ghost repos and one-click adopt, the Inbox, quick capture and its global hotkey, the Calendar,
+  the Logbook heatmap, the Due Soon and Neglected views, the archive shelf.
+- The eight CRT colour themes, the boot sequence and the CRT overlay.
+
+### Changed
+
+- **Writes** go through one engine path: locked per project, atomic, all or nothing, and every
+  byte the engine does not manage is copied as it was. A refused change writes nothing and says
+  why.
+- **Updates** download as soon as they are found; the app offers a restart to install.
+- **The window** reopens where you left it, at the size you left it.
+- **The toolchain**: Electron 44, electron-vite 5, Vite 7, Vitest 5, TypeScript 7.
+
+### Upgrading from 2.x
+
+1. Install 3.0.0 (the app's update check finds it from 2.0.1 on). If you installed the CLI from
+   npm: `npm rm -g radar-blip`, then `npm i -g radar-blip`.
+2. Run `radar-blip setup` (or *Run setup again* in Settings). It replaces the v2 hook and
+   skill, keeping a backup of each. `migrate` will not run before this.
+3. Track your projects: *Find more projects* in Settings, or `radar-blip track --find <folder>`.
+   `radar-blip doctor` then shows a `projects` warning listing the files still in the v2 format.
+4. For each project: `radar-blip migrate --dry-run --path "<folder>"`, read what it would change,
+   then `radar-blip migrate --path "<folder>"`. The original is copied to
+   `<data folder>/backups/<project id>/` first; a second run does nothing. A project you want to
+   keep as it is can stay in the v2 format, read-only; leave it out of `migrate --all`.
+5. RADAR 2's Inbox (by default `Documents\RADAR\Inbox\BLIP.md`) is not read by 3.0.0. Move each
+   open task in it to its project once that project is migrated:
+   `radar-blip add "<task>" --path "<project folder>"`. The Inbox file itself is left as it is.
+
 ## [2.0.2] — 2026-08-06
 
 App-only — the `radar-blip` engine is unchanged and stays at 2.0.1 on npm.

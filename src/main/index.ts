@@ -1,25 +1,102 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, session, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, session, shell } from 'electron'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { IPC, type UpdateEvent } from '../shared/types'
-import { registerRadarHandlers } from './ipc/radar'
-import { resolveAutoUpdater, updateLog } from './updater'
+import { userInfo } from 'node:os'
+import { defaultTargets, ensure, ownerName, type Targets } from 'radar-blip'
+import type { EventName, Events } from '../shared/ipc'
+import { Board } from './board'
+import { appInfo, createRoutes, registerRoutes } from './ipc'
+import { registerUpdates } from './updater'
+import { shimTarget, type AppShim } from './shim'
+import { posixPath, windowsPath, type PathEditor } from './user-path'
+import { readWindowState, settle, writeWindowState, type Rect } from './window-state'
 
 const isDev = !app.isPackaged
 
 let mainWindow: BrowserWindow | null = null
-let stopRadar: (() => void) | null = null
+let board: Board | null = null
+
+/** The v3 poll runs only while the window can be seen (spec 8.4). */
+function trackVisibility(win: BrowserWindow): void {
+  const update = (): void => board?.setVisible(!win.isDestroyed() && win.isVisible() && !win.isMinimized())
+  for (const e of ['show', 'hide', 'minimize', 'restore', 'closed'] as const) win.on(e as 'show', update)
+  win.on('focus', () => board?.focused())
+  update()
+}
+
+function emit<E extends EventName>(event: E, payload: Events[E]): void {
+  const w = mainWindow
+  if (w && !w.isDestroyed()) w.webContents.send(event, payload)
+}
+
+/** The backend: the board, its poll, and the route table. */
+function startV3(): void {
+  const owner = ownerName().catch(() => null)
+  const author = owner.then((o) => o ?? (userInfo().username || 'RADAR')).catch(() => 'RADAR')
+  board = new Board({ emit, author })
+  const routes = createRoutes({
+    board,
+    shell,
+    pickFolder: async () => {
+      const opts = { properties: ['openDirectory' as const] }
+      const r = mainWindow ? await dialog.showOpenDialog(mainWindow, opts) : await dialog.showOpenDialog(opts)
+      return r.canceled || !r.filePaths[0] ? null : r.filePaths[0]
+    },
+    info: () => appInfo(app.getVersion(), owner),
+    updates,
+    titleBar: (colors) => {
+      if (mainWindow && !mainWindow.isDestroyed() && process.platform !== 'darwin') mainWindow.setTitleBarOverlay(colors)
+    },
+    setup: setupTargets()
+  })
+  registerRoutes(ipcMain, routes)
+  void board.ready()
+  if (mainWindow) trackVisibility(mainWindow)
+}
+
+let updates: ReturnType<typeof registerUpdates>
+
+/**
+ * Where setup works (spec 5.4): the engine's own targets, with the skill files this app ships.
+ * The shim runs the bundled CLI, in packaged builds only: a dev run must never point the shim
+ * every hook on the machine runs at a working tree.
+ */
+function setupTargets(): { targets: Targets; shim: AppShim | null; path: PathEditor } {
+  const skillsDir = isDev ? join(app.getAppPath(), 'packages', 'blip-core', 'skills') : join(process.resourcesPath, 'skills')
+  const cli = join(process.resourcesPath, 'cli', 'radar-blip.mjs')
+  return {
+    targets: { ...defaultTargets(), skillsDir },
+    shim: !isDev && existsSync(cli) ? shimTarget(cli, process.execPath) : null,
+    path: process.platform === 'win32' ? windowsPath() : posixPath()
+  }
+}
+
+/**
+ * `setup.ensure()` on every start: the shim follows this build, and RADAR's own hooks and skill,
+ * when they are installed, follow this engine. Nothing is installed for the first time here.
+ */
+function ensureSetup(): void {
+  const { targets, shim } = setupTargets()
+  if (!shim) return
+  ensure(targets, shim).catch((e) => console.error('setup.ensure failed', e))
+}
 
 function createWindow(): void {
+  const stateFile = join(app.getPath('userData'), 'window.json')
+  const saved = readWindowState(stateFile, screen.getAllDisplays().map((d) => d.workArea))
   mainWindow = new BrowserWindow({
-    width: 1180,
-    height: 800,
+    width: saved.width,
+    height: saved.height,
     minWidth: 820,
     minHeight: 560,
     show: false,
-    // Frameless: the renderer draws its own TerraByte title bar + window controls.
-    frame: false,
-    backgroundColor: '#000000',
-    icon: join(app.getAppPath(), 'build/icon.png'),
+    // The renderer draws the top bar; the native window controls sit over its right end
+    // (138px reserved there), recoloured by the renderer's theme through window.titleBar.
+    titleBarStyle: 'hidden',
+    ...(process.platform === 'darwin' ? {} : { titleBarOverlay: { color: '#050706', symbolColor: '#A6B3AB', height: 43 } }),
+    backgroundColor: '#050706',
+    // A packaged resource: `build/` is not inside the asar.
+    icon: isDev ? join(app.getAppPath(), 'build/icon.png') : join(process.resourcesPath, 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -34,7 +111,33 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => mainWindow?.show())
+  const w = mainWindow
+  // Saved and restored as content bounds. The outer bounds of a frameless window on a scaled
+  // display do not round-trip: restored from them the window grew several pixels a launch.
+  let normal: Rect
+  if (saved.x !== undefined && saved.y !== undefined) {
+    normal = { x: saved.x, y: saved.y, width: saved.width, height: saved.height }
+    w.setContentBounds(normal)
+  } else {
+    w.setContentSize(saved.width, saved.height)
+    normal = w.getContentBounds()
+  }
+  const remember = (): void => {
+    if (!w.isMaximized() && !w.isMinimized() && !w.isFullScreen()) normal = settle(normal, w.getContentBounds())
+  }
+  w.on('resize', remember)
+  w.on('move', remember)
+  w.on('ready-to-show', () => {
+    if (saved.maximized) w.maximize()
+    w.show()
+  })
+  w.on('close', () => {
+    try {
+      writeWindowState(stateFile, normal, w.isMaximized())
+    } catch {
+      /* losing the window position is not worth failing a close over */
+    }
+  })
 
   // The app never navigates — block renderer-initiated navigation outright. Dev exception:
   // Vite's full-reload is a same-URL location.reload(), which does emit will-navigate.
@@ -44,7 +147,7 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    // Same allowlist as radar:open-external — never hand a non-web URL to the OS.
+    // Web URLs only — never hand any other scheme to the OS.
     try {
       if (['http:', 'https:'].includes(new URL(details.url).protocol)) {
         shell.openExternal(details.url)
@@ -61,112 +164,6 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
-}
-
-function registerWindowControls(): void {
-  ipcMain.on(IPC.minimizeWindow, () => mainWindow?.minimize())
-  ipcMain.on(IPC.maximizeWindow, () => {
-    if (!mainWindow) return
-    if (mainWindow.isMaximized()) mainWindow.unmaximize()
-    else mainWindow.maximize()
-  })
-  ipcMain.on(IPC.closeWindow, () => mainWindow?.close())
-}
-
-function registerGlobalQuickAdd(): void {
-  // Global hotkey: focus the app and open quick-add from anywhere.
-  const accelerator = 'CommandOrControl+Shift+Space'
-  globalShortcut.register(accelerator, () => {
-    if (!mainWindow) return
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.show()
-    mainWindow.focus()
-    mainWindow.webContents.send(IPC.openQuickAdd)
-  })
-}
-
-/**
- * Auto-update IPC (window.api): version readout + a manual check → download → install flow, bridged to
- * electron-updater's events. Packaged-only — in dev every check reports `devMode` and the renderer shows a
- * friendly note (the Updates pane). Handlers are registered synchronously (no invoke race); the updater is
- * loaded lazily so dev never touches it.
- */
-function registerUpdates(getWindow: () => BrowserWindow | null): void {
-  ipcMain.handle(IPC.appGetVersion, () => app.getVersion())
-
-  if (!app.isPackaged) {
-    ipcMain.handle(IPC.updateCheck, async () => ({ devMode: true }))
-    ipcMain.handle(IPC.updateDownload, async () => {})
-    ipcMain.on(IPC.updateInstall, () => {})
-    return
-  }
-
-  const send = (event: UpdateEvent): void => getWindow()?.webContents.send(IPC.updateEvent, event)
-
-  const updater = import('electron-updater').then((mod) => {
-    // NOT `.then(({ autoUpdater }) => …)` — that destructure is always `undefined`. See updater.ts.
-    const autoUpdater = resolveAutoUpdater(mod)
-
-    autoUpdater.logger = updateLog
-    updateLog.info(`updater ready — RADAR ${app.getVersion()}, electron ${process.versions.electron}`)
-    autoUpdater.autoDownload = false
-    autoUpdater.on('update-available', (info) => send({ type: 'available', version: info.version }))
-    autoUpdater.on('update-not-available', () => send({ type: 'not-available' }))
-    autoUpdater.on('download-progress', (p) => send({ type: 'progress', percent: Math.round(p.percent) }))
-    autoUpdater.on('update-downloaded', (info) => send({ type: 'downloaded', version: info.version }))
-    autoUpdater.on('error', (err) =>
-      send({ type: 'error', message: err instanceof Error ? err.message : String(err ?? 'unknown error') })
-    )
-    return autoUpdater
-  })
-
-  // Failing to load the updater at all is the one error electron-updater can never report itself
-  // (its `error` listeners are attached inside the callback that threw). Record it, and surface it.
-  const fail = (e: unknown): void => {
-    updateLog.error(e)
-    send({ type: 'error', message: e instanceof Error ? e.message : String(e ?? 'unknown error') })
-  }
-  updater.catch(fail)
-
-  // electron-updater has no working HTTP timeout under Electron: HttpExecutor.addTimeOutHandler
-  // hooks `request.on('socket')`, and electron's net.ClientRequest never emits `socket`. Combined
-  // with AppUpdater caching `checkForUpdatesPromise` until it settles, one stalled connection would
-  // wedge every later check for the life of the process — the same silent-spinner signature.
-  const CHECK_TIMEOUT_MS = 30_000
-  const bounded = <T>(p: Promise<T>): Promise<T> =>
-    Promise.race([
-      p,
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('update check timed out')), CHECK_TIMEOUT_MS).unref?.()
-      )
-    ])
-
-  ipcMain.handle(IPC.updateCheck, async () => {
-    try {
-      const autoUpdater = await updater
-      await bounded(autoUpdater.checkForUpdates())
-    } catch (e) {
-      fail(e)
-    }
-    return { devMode: false }
-  })
-  ipcMain.handle(IPC.updateDownload, async () => {
-    try {
-      const autoUpdater = await updater
-      await autoUpdater.downloadUpdate()
-    } catch (e) {
-      fail(e)
-    }
-  })
-  ipcMain.on(IPC.updateInstall, () => {
-    updater.then((autoUpdater) => autoUpdater.quitAndInstall()).catch(fail)
-  })
-
-  // Initial silent check on launch (replaces the old checkForUpdatesAndNotify()).
-  updater.then((autoUpdater) => bounded(autoUpdater.checkForUpdates())).catch(() => {
-    // Already reported: a load failure by `updater.catch(fail)` above, a check failure by
-    // electron-updater's own `error` event + logger. Nothing to add, but the chain needs a sink.
-  })
 }
 
 /** Strict CSP for the packaged app. Skipped in dev so Vite HMR works. */
@@ -186,7 +183,7 @@ function applyProdCsp(): void {
 }
 
 // Single instance: a second launch quits immediately and focuses the running window instead
-// (two instances would race the watcher, the config file, and the global hotkey).
+// (two instances would race the poll and the registry).
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
@@ -198,19 +195,22 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(() => {
-    registerWindowControls()
     applyProdCsp()
     createWindow()
-    // RADAR project model (BLIP.md): scan/watch/write + live push to the renderer.
-    stopRadar = registerRadarHandlers(() => mainWindow)
-    registerGlobalQuickAdd()
 
     // Auto-update — packaged builds only; a silent no-op until a release is published
-    // (see electron-builder.yml `publish` + docs/RELEASING.md). Drives the Settings → Updates pane.
-    registerUpdates(() => mainWindow)
+    // (see electron-builder.yml `publish` + docs/RELEASING.md).
+    updates = registerUpdates(() => mainWindow)
+
+    // The backend (spec section 8).
+    startV3()
+    ensureSetup()
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow()
+        if (mainWindow) trackVisibility(mainWindow)
+      }
     })
   })
 
@@ -219,7 +219,6 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.on('will-quit', () => {
-    globalShortcut.unregisterAll()
-    stopRadar?.()
+    board?.stop()
   })
 }

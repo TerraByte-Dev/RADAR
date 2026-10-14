@@ -1,0 +1,55 @@
+/* The two faces, bundled with the app (renderer spec 1.2): the CSP forbids fetching them.
+   SIL OFL 1.1; the licence texts sit beside the files and ship in the installer. */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('../assets/fonts/IBMPlexMono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: block;
+  src: url('../assets/fonts/IBMPlexMono-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: block;
+  src: url('../assets/fonts/IBMPlexMono-600.woff2') format('woff2');
+}
+/* the arrows the latin subset lacks: → ← ↵ ↗ ▸ ◆ */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('../assets/fonts/IBMPlexMono-400-arrows.woff2') format('woff2');
+  unicode-range: U+2190-21FF, U+25B8, U+25C6;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: block;
+  src: url('../assets/fonts/IBMPlexMono-500-arrows.woff2') format('woff2');
+  unicode-range: U+2190-21FF, U+25B8, U+25C6;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: block;
+  src: url('../assets/fonts/IBMPlexMono-600-arrows.woff2') format('woff2');
+  unicode-range: U+2190-21FF, U+25B8, U+25C6;
+}
+@font-face {
+  font-family: 'VT323';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('../assets/fonts/VT323-400.woff2') format('woff2');
+}

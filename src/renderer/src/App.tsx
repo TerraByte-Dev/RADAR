@@ -1,71 +1,160 @@
+// The shell (renderer spec 2): top bar, the view, status bar.
 import { useEffect } from 'react'
-import { BootSplash } from './components/BootSplash'
-import { CommandPalette } from './components/CommandPalette'
-import { CrtOverlay } from './components/CrtOverlay'
-import { ErrorBoundary } from './components/ErrorBoundary'
-import { Onboarding } from './components/Onboarding'
-import { QuickAdd } from './components/QuickAdd'
-import { Sidebar } from './components/Sidebar'
-import { TitleBar } from './components/TitleBar'
-import { useKeyboard } from './lib/useKeyboard'
-import { useStore } from './store/useStore'
-import { CalendarView } from './views/CalendarView'
-import { LogbookView } from './views/LogbookView'
-import { ProjectListView } from './views/ProjectListView'
-import { RadarView } from './views/RadarView'
-
-function ActiveView({ kind }: { kind: string }): JSX.Element {
-  if (kind === 'radar') return <RadarView />
-  if (kind === 'logbook') return <LogbookView />
-  if (kind === 'calendar') return <CalendarView />
-  return <ProjectListView />
-}
+import { onKeyDown, register } from './lib/actions'
+import { undo } from './lib/edits'
+import { watchAway } from './lib/away'
+import { readPrefs, writePrefs } from './lib/prefs'
+import { openPick } from './lib/projectActions'
+import { applyTheme } from './lib/theme'
+import { focusHeading } from './lib/focus'
+import { StatusBar } from './components/StatusBar'
+import { TopBar } from './components/TopBar'
+import { Toast } from './components/Toast'
+import { KeysSheet } from './components/KeysSheet'
+import { Palette } from './components/Palette'
+import { pickOrder, rightStatus } from './lib/derive'
+import { nothingTracked, useBoard } from './store/board'
+import { useShell } from './store/shell'
+import { usePickupTarget } from './views/PickUp'
+import { useScopeTarget } from './views/Scope'
+import { useLogSelection } from './views/Log'
+import { FirstRun, Log, PickUp, ProjectPage, Scope, Settings } from './views/views'
+import { Button } from './components/atoms'
 
 export default function App(): JSX.Element {
-  const loaded = useStore((s) => s.loaded)
-  const viewKind = useStore((s) => s.view.kind)
-  const bootDone = useStore((s) => s.bootDone)
-  const onboarded = useStore((s) => s.onboarded)
-  const config = useStore((s) => s.config)
-  const { init, setQuickAddOpen } = useStore.getState()
+  const route = useShell((s) => s.route)
+  const view = route.view
+  const target = usePickupTarget()
+  const scopeTarget = useScopeTarget()
+  const theme = useShell((s) => s.theme)
+  const overlay = useShell((s) => s.overlay)
+  const palette = useShell((s) => s.palette)
+  const logTarget = useLogSelection((s) => s.name)
+  const status = useBoard(rightStatus)
+  const pageName = useBoard((b) => (route.view === 'project' ? (b.projects[route.id]?.doc?.name ?? null) : null))
+  const boardStatus = useBoard((b) => b.status)
+  const boardError = useBoard((b) => b.error)
+  // first run is forced while RADAR tracks nothing at all (section 2, 8.1)
+  const empty = useBoard(nothingTracked)
+  const canPick = useBoard((b) => pickOrder(b).length > 0)
+  const firstRun = empty || view === 'first-run'
 
-  // First run: no workspace root beyond the app-managed default has been added yet.
-  const needsOnboarding =
-    !!config && config.roots.filter((r) => r !== config.workspace).length === 0
+  useEffect(() => applyTheme(theme), [theme])
 
-  useKeyboard()
+  // a new view: focus lost with the old one goes to its heading
+  const routeKey = route.view === 'project' ? `project:${route.id}` : route.view
+  useEffect(focusHeading, [routeKey, boardStatus, firstRun])
 
   useEffect(() => {
-    init()
+    const board = useBoard.getState()
+    const stop = board.start(window.radar)
+    const tick = (): void => board.tick()
+    const minute = setInterval(tick, 60_000)
+    window.addEventListener('focus', tick)
+    return () => {
+      stop()
+      clearInterval(minute)
+      window.removeEventListener('focus', tick)
+    }
   }, [])
 
-  // Global quick-add hotkey fired from the main process.
   useEffect(() => {
-    return window.api.onOpenQuickAdd(() => setQuickAddOpen(true))
+    const s = useShell.getState()
+    const off = register({
+      'theme.toggle': s.toggleTheme,
+      'density.toggle': s.toggleDensity,
+      'nav.back': s.goBack,
+      'edit.undo': () => void undo(),
+      'palette.open': () => useShell.setState({ overlay: 'palette', palette: 'all' }),
+      'palette.projects': () => useShell.setState({ overlay: 'palette', palette: 'projects' }),
+      'keys.show': () => useShell.setState({ overlay: 'keys' })
+    })
+    window.addEventListener('keydown', onKeyDown)
+    // The theme follows the system until one is chosen with T.
+    const mq = window.matchMedia('(prefers-color-scheme: light)')
+    const follow = (e: MediaQueryListEvent): void => {
+      if (!readPrefs().theme) useShell.setState({ theme: e.matches ? 'light' : 'dark' })
+    }
+    mq.addEventListener('change', follow)
+    return () => {
+      off()
+      window.removeEventListener('keydown', onKeyDown)
+      mq.removeEventListener('change', follow)
+    }
+  }, [])
+
+  // the views wait while first run is forced; P only while there is something to pick
+  useEffect(() => {
+    if (empty) return
+    const s = useShell.getState()
+    return register({
+      'view.pickup': () => s.go({ view: 'pickup' }),
+      'view.scope': () => s.go({ view: 'scope' }),
+      'view.log': () => s.go({ view: 'log' }),
+      'view.settings': () => s.go({ view: 'settings' }),
+      // Pick one for me opens on Pick up, under the strip's Pick button
+      ...(canPick
+        ? {
+            'pick.open': () => {
+              s.go({ view: 'pickup' })
+              openPick(pickOrder(useBoard.getState()))
+            }
+          }
+        : {})
+    })
+  }, [empty, canPick])
+
+  // lastOpenedAt (section 2): written as the window closes, and after ten minutes hidden (lib/away)
+  useEffect(() => {
+    const leave = (): void => writePrefs({ lastOpenedAt: Date.now() })
+    const away = watchAway(() => document.hidden, {
+      away: (at) => writePrefs({ lastOpenedAt: at }),
+      back: (at) => {
+        writePrefs({ lastOpenedAt: at })
+        useShell.setState({ lastOpenedAt: at, sinceOpen: false })
+      }
+    })
+    window.addEventListener('beforeunload', leave)
+    document.addEventListener('visibilitychange', away.change)
+    return () => {
+      away.stop()
+      window.removeEventListener('beforeunload', leave)
+      document.removeEventListener('visibilitychange', away.change)
+    }
   }, [])
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden bg-bg">
-      <TitleBar />
-
-      <div className="relative z-[1] flex flex-1 overflow-hidden">
-        <div className="term-grid-bg" aria-hidden />
-        {loaded && (
+    <>
+      <TopBar />
+      <main>
+        {/* starting: the top bar and the status bar only; the list call answers in a tick (section 8) */}
+        {boardStatus === 'loading' ? null : boardStatus === 'error' ? (
+          <div className="failed" role="alert">
+            <p>RADAR could not read its project list. {boardError?.message}</p>
+            <Button onClick={() => void useBoard.getState().reload(window.radar)}>Try again</Button>
+          </div>
+        ) : firstRun ? (
+          <FirstRun key={empty ? 'empty' : 'again'} initial={route.view === 'first-run' && !empty ? route.step : 'start'} back={!empty} />
+        ) : (
           <>
-            <Sidebar />
-            {/* keyed so switching views retries a fresh render after a fault */}
-            <ErrorBoundary key={viewKind}>
-              <ActiveView kind={viewKind} />
-            </ErrorBoundary>
+            {view === 'pickup' && <PickUp />}
+            {route.view === 'project' && <ProjectPage key={route.id} id={route.id} />}
+            {view === 'scope' && <Scope />}
+            {view === 'log' && <Log />}
+            {route.view === 'settings' && <Settings section={route.section} />}
           </>
         )}
-      </div>
-
-      <QuickAdd />
-      <CommandPalette />
-      <CrtOverlay />
-      {loaded && bootDone && !onboarded && needsOnboarding && <Onboarding />}
-      {!bootDone && <BootSplash />}
-    </div>
+      </main>
+      {overlay === 'palette' && <Palette key={palette} projectsOnly={palette === 'projects'} />}
+      {overlay === 'keys' && <KeysSheet />}
+      <Toast />
+      {!firstRun && (
+        <StatusBar
+          view={view}
+          target={view === 'pickup' ? (target?.doc?.name ?? null) : view === 'scope' ? (scopeTarget?.doc?.name ?? null) : view === 'log' ? logTarget : pageName}
+          status={status}
+        />
+      )}
+    </>
   )
 }

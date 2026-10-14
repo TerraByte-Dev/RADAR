@@ -6,11 +6,28 @@ directories:
 files:
   - out/**/*
   - package.json
+# Outside the asar: the bundled CLI the `<data>/bin` shim runs (spec 5.4; `npm run bundle:cli`
+# writes it), the /blip skill files setup installs (`npm run build:core` copies them; the bundled
+# CLI finds them at ../skills, and so does main), the window icon, and the font licences.
+extraResources:
+  - from: resources/cli/radar-blip.mjs
+    to: cli/radar-blip.mjs
+  - from: packages/blip-core/skills
+    to: skills
+  - from: build/icon.png
+    to: icon.png
+  # The bundled fonts' licences (SIL OFL 1.1, renderer spec 1.2).
+  - from: src/renderer/src/assets/fonts
+    to: licenses
+    filter:
+      - OFL-*.txt
 win:
   icon: build/icon.ico
   target:
     - nsis
 nsis:
+  # The name the release asset and latest.yml already use; spelled out so the local file matches.
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true
 mac:
