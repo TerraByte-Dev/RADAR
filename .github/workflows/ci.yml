@@ -33,3 +33,8 @@ jobs:
         run: npm run typecheck
       - name: Test (app + engine)
         run: npm test
+      # Build the app itself, unpacked (no installer, no signing, nothing published), so a
+      # broken electron-builder config or a missing packaged resource fails the PR.
+      - name: Build the app (electron-builder --dir)
+        if: matrix.os == 'windows-latest'
+        run: npm run package -- --dir --publish never

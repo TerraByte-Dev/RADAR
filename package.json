@@ -1,6 +1,6 @@
 {
   "name": "radar",
-  "version": "2.0.2",
+  "version": "3.0.0",
   "description": "TerraByte RADAR — a personal project radar. Every project is a blip fed by a per-project BLIP.md your AI coding agent keeps current via /blip.",
   "main": "./out/main/index.js",
   "author": "TerraByte-Dev",
@@ -21,46 +21,47 @@
     "dev": "npm run build:core && electron-vite dev",
     "build": "npm run build:core && electron-vite build",
     "start": "electron-vite preview",
-    "package": "npm run build:core && electron-vite build && electron-builder",
+    "package": "npm run build:core && electron-vite build && npm run bundle:cli && electron-builder",
+    "bundle:cli": "node scripts/bundle-cli.mjs",
     "build:core": "npm run build --workspace radar-blip",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "npm run build:core && npm run typecheck:node && npm run typecheck:web",
+    "typecheck:e2e": "tsc --noEmit -p tsconfig.e2e.json",
+    "typecheck": "npm run build:core && npm run typecheck:node && npm run typecheck:web && npm run typecheck:e2e",
     "test": "npm run build:core && vitest run && vitest run --root packages/blip-core",
     "test:core": "npm run build:core && vitest run --root packages/blip-core",
-    "blip": "tsx packages/blip-core/src/cli.ts"
+    "test:full": "node scripts/test-full.mjs",
+    "blip": "tsx packages/blip-core/src/cli/main.ts",
+    "demo": "npm run build && tsx e2e/demo.ts",
+    "e2e": "npm run build && playwright test -c e2e"
   },
   "dependencies": {
-    "@fontsource/ibm-plex-mono": "^5.2.7",
-    "@fontsource/share-tech-mono": "^5.2.7",
-    "@fontsource/vt323": "^5.2.7",
+    "electron-updater": "^6.8.9",
+    "radar-blip": "*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@radix-ui/react-context-menu": "^2.2.2",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-dropdown-menu": "^2.1.2",
-    "chokidar": "^3.6.0",
-    "chrono-node": "^2.7.7",
-    "cmdk": "^1.0.4",
-    "electron-updater": "^6.8.9",
-    "lucide-react": "^0.460.0",
-    "radar-blip": "*",
-    "zustand": "^5.0.1"
-  },
-  "devDependencies": {
     "@types/node": "^22.9.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.4.20",
+    "axe-core": "^4.11.0",
     "electron": "^44.7.1",
     "electron-builder": "^26.17.0",
     "electron-vite": "^5.0.0",
+    "esbuild": "^0.25.12",
+    "lucide-react": "^0.460.0",
     "postcss": "^8.4.49",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tailwindcss": "^3.4.15",
-    "tailwindcss-animate": "^1.0.7",
     "typescript": "^7.0.2",
     "vite": "^7.3.7",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.4",
+    "zustand": "^5.0.1"
   }
 }

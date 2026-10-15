@@ -1,6 +1,6 @@
 {
   "name": "radar-blip",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "description": "Own your project state in a plain, git-friendly Markdown file your AI coding agent keeps current. The bulletproof BLIP.md engine + radar-blip CLI behind RADAR.",
   "keywords": [
     "blip",
@@ -36,20 +36,21 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "radar-blip": "./dist/cli.js"
+    "radar-blip": "./dist/cli/main.js"
   },
   "files": [
     "dist",
     "skills"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-skills.mjs",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json && node scripts/copy-skills.mjs",
     "test": "npm run build && vitest run",
     "test:watch": "vitest",
-    "blip": "tsx src/cli.ts",
+    "bench:activity": "node scripts/bench-activity.mjs",
+    "blip": "tsx src/cli/main.ts",
     "prepublishOnly": "npm test"
   },
   "dependencies": {

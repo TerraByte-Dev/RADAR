@@ -1,109 +1,147 @@
 # Releasing RADAR
 
-RADAR ships as **two artifacts**:
+RADAR ships as two artifacts from this one repository:
 
-1. **`radar-blip`** (npm) — the `BLIP.md` engine + CLI + the `/blip` skills. The distributable
-   on-ramp: anyone can `npm i -g radar-blip` and feed their projects from Claude Code / Codex.
-2. **RADAR desktop app** — the flagship radar, packaged as signed installers with auto-update.
+1. **`radar-blip` on npm** — the `BLIP.md` engine, the CLI and the `/blip` skill files
+   (`packages/blip-core`).
+2. **The desktop app on GitHub Releases** — `RADAR-Setup-<version>.exe` plus `latest.yml`, which
+   the installed app's update check reads. The app carries its own copy of the CLI.
 
-Bump the **app** version in `package.json` every release. Bump the **engine** version in
-`packages/blip-core/package.json` only when `packages/blip-core/` actually changed — an app-only
-release (2.0.2, say) leaves the engine where it is rather than republishing identical bytes under a
-new number. Tag the release commit (`vX.Y.Z`).
+Bump the app's version in `package.json` every release. Bump `packages/blip-core/package.json`
+only when the engine changed; an app-only release leaves the published engine where it is. Both
+are 3.0.0 for this release.
+
+The steps below are in the order they must happen. Each one names why it is where it is.
+
+**Merge to `main` last.** `main` is what visitors see. A README on `main` that describes the new
+version, while the latest release and npm still serve the old one, sends people to the wrong
+installer and the wrong CLI. So everything is built, published and tagged from the release
+branch (the branch whose PR, or stack of PRs, holds the whole release, approved but not merged),
+and the merge into `main` is step 6.
 
 ---
 
-## 1. Publish `radar-blip` to npm
+## 1. Before anything is published
+
+On the release branch:
+
+```bash
+git switch <release branch> && git pull --ff-only
+git status --short                     # must print nothing
+npm ci
+npm run typecheck
+npm test
+npm run e2e
+npm run package -- --dir --publish never   # the unpacked app in dist/win-unpacked; open it once
+```
+
+In `CHANGELOG.md`, change `## [3.0.0] — unreleased` to today's date, commit that on the release
+branch, and push it:
+
+```bash
+git push origin HEAD
+gh pr checks --watch                   # CI on the release PR must pass before step 2
+```
+
+The commit that CI passed is the one that is published, tagged and later merged.
+
+## 2. Publish `radar-blip` to npm — before the app tag
+
+Why first: the moment the app release exists, every installed 2.0.1 / 2.0.2 finds it through its
+update check. The README and the CHANGELOG tell people to `npm rm -g radar-blip` and then
+`npm i -g radar-blip`, and `radar-blip doctor` fails while a 2.x CLI is on PATH. That
+`npm i -g` must already install 3.0.0.
 
 ```bash
 cd packages/blip-core
-npm publish --access public         # requires `npm login` as the package owner
+npm whoami                             # the package owner
+npm run build                          # empties dist/ first, so nothing from a deleted source ships
+npm pack --dry-run                     # read the list: every dist/ file has a source in src/
+npm publish --access public --otp <6-digit code from your authenticator>
+cd ../..
+npm view radar-blip version            # 3.0.0
 ```
 
-`prepublishOnly` ("npm test") rebuilds the engine (tsc + skill bundling) and runs its test
-suite automatically on publish — `dist/` and `skills/` are git-ignored, so without the guard a
-fresh-clone publish would silently ship an empty tarball.
+A version published to npm can never be changed, so read the `npm pack` list before publishing.
+`prepublishOnly` (`npm test`) builds again (the build always starts from an empty `dist/`) and
+runs the engine's tests before anything is uploaded. `dist/` and the bundled skills are
+git-ignored, so `git status` in step 1 cannot show a stale file there. If the one-time code
+expires during the tests, run the publish again with a fresh one.
 
-The package's `files` are `dist` + `skills`, so the compiled engine, the `radar-blip` bin, and
-both `/blip` skills ship in the tarball. End users then:
+## 3. Tag the release — before electron-builder runs
+
+Why: given no tag, electron-builder creates `v3.0.0` itself, pointing at whatever the remote
+default branch is at that moment (here, the old `main`), and without a message.
 
 ```bash
-npm i -g radar-blip
-radar-blip skills install           # drops /blip into ~/.claude and ~/.codex
+git tag -a v3.0.0 -m "RADAR 3.0.0"     # on the release branch's pushed tip
+git push origin v3.0.0
 ```
 
-Until it is published, the skills resolve the CLI via the `npx -y radar-blip` fallback, or a
-local global link (`cd packages/blip-core && npm i -g .`).
+## 4. Build and publish the installer
 
-> The package name `radar-blip` is reversible until the first publish — confirm availability
-> (`npm view radar-blip`) before pushing.
+`npm run package` builds the engine, the app and the bundled CLI (`resources/cli/`) before
+electron-builder runs, so use it rather than calling electron-builder directly. The token needs
+`repo` scope on `TerraByte-Dev/RADAR`. In PowerShell:
 
----
+```powershell
+$env:GH_TOKEN = gh auth token
+npm run package -- --publish always
+Remove-Item Env:GH_TOKEN
+```
 
-## 2. Package + release the desktop app
+`electron-builder.yml` sets `publish.releaseType: release`, so this creates a published release,
+not a draft (electron-updater cannot see a draft: an update in a draft reaches nobody and looks
+exactly like "no update available"). The installer is not code-signed: no certificate is
+configured, and electron-builder says so in its output.
 
-`electron-builder` config lives in `electron-builder.yml` (Win NSIS · mac dmg · linux AppImage;
-icons from `build/`). Auto-update is wired in `src/main/index.ts` (packaged builds only) and reads
-the `publish:` block at runtime via `electron-updater`.
+## 5. After it is published
 
 ```bash
-npm run package                     # build:core → electron-vite build → electron-builder (local installers in dist/)
+gh release view v3.0.0 --json isDraft,isPrerelease,assets --jq '{isDraft,isPrerelease,assets:[.assets[].name]}'
 ```
 
-To cut a release that auto-update can see, publish to the GitHub repo named in
-`electron-builder.yml` → `publish` (`owner/repo`):
+- [ ] `isDraft` and `isPrerelease` are both `false`.
+- [ ] The assets are `RADAR-Setup-3.0.0.exe`, `RADAR-Setup-3.0.0.exe.blockmap` and `latest.yml`.
+- [ ] Put the CHANGELOG's 3.0.0 section in the release notes:
+      `gh release edit v3.0.0 --notes-file <file holding that section>`.
+- [ ] `npx -y radar-blip@3.0.0 --version` prints `3.0.0`.
+- [ ] On a machine (or Windows user) with 2.0.2 installed: Settings → check for updates finds
+      3.0.0, installs it, and the app opens on first run.
+- [ ] Repo **Settings → General → Social preview**: upload `docs/assets/social-preview.png`
+      (GitHub has no API for it).
+
+## 6. Merge into `main`
+
+Now that npm and the release serve 3.0.0, merge the release PR (for a stack, bottom PR first)
+with a **merge commit**, never squash or rebase: either of those makes new commits, and `main`
+would not contain the commit the tag points at.
 
 ```bash
-# GH_TOKEN must have repo scope on the publish target
-GH_TOKEN=… npx electron-builder --publish always       # add -w / -m / -l to target a platform
+git fetch origin
+git merge-base --is-ancestor v3.0.0 origin/main && echo "main holds the tag"
+gh run list --branch main --limit 1    # CI on main passes
 ```
 
-This uploads the installers + the `latest*.yml` update manifests to a GitHub Release;
-`autoUpdater.checkForUpdatesAndNotify()` then finds them on the next launch.
+## 7. Upgrade your own install
 
-### Launch sequencing — do these **in order**
-
-> ⚠ **Why npm comes before going public:** both `/blip` skills tell agents to fall back to
-> `npx -y radar-blip`, which downloads **and executes** whatever package holds that name on the
-> npm registry — and `radar-blip` is currently **unclaimed**. If this repo goes public (skills
-> included) before the package is published, a squatter can claim the name and get arbitrary
-> code auto-executed on every agent machine that runs the skill. Publishing first closes that
-> window; the only cost is the package's repository/homepage links 404ing for the few minutes
-> the repo stays private.
-
-1. ~~**Free the RADAR repo name.**~~ ✅ Done 2026-06-12 — the old prototype was renamed to
-   `TerraByte-Dev/RADAR-prototype` (still private; delete it via the GitHub UI or a token with
-   `delete_repo` scope when convenient).
-2. ~~**Rename the repo to `RADAR`.**~~ ✅ Done 2026-06-12 — the repo, the local git remote,
-   `About.tsx`, and the GitHub description all say RADAR. (`electron-builder.yml` → `publish.repo`
-   already matched.) The repo is **still private**.
-3. **`npm publish` `radar-blip`** (see above; `prepublishOnly` guards the build). Confirm the name
-   is still available right before publishing: `npm view radar-blip`.
-4. **Merge the PR stack so `main` is the real product.** Going public with the pre-pivot
-   `main` — and no `LICENSE` on `main` — is a blocker.
-5. **Make the repo public.** The package's repository/homepage links now resolve.
-6. **Set the GitHub social preview** (Settings → General → Social preview → upload
-   `docs/assets/og-image.png`). This is the card shown when the repo is shared on social/chat — it
-   can't be set via the API, so it's a manual upload.
-7. **Flip `About.tsx`'s repo link** to the renamed public repo.
-8. **Code-sign the installers.** Windows (Authenticode) and macOS (Developer ID + notarization)
-   certificates are required for installs that don't warn, and for macOS auto-update to work at
-   all. CI injects them via the standard electron-builder env vars (`CSC_LINK`/
-   `CSC_KEY_PASSWORD`, `APPLE_*`).
+Follow [the CHANGELOG's upgrade steps](../CHANGELOG.md#upgrading-from-2x), the RADAR 2 Inbox
+step included. After setup, `radar-blip doctor` shows every line `ok` except `projects`, which
+stays a warning listing the files still in the v2 format until each is migrated (or left in it on
+purpose).
 
 ---
 
 ## Checklist
 
-- [ ] Bump the app version (and the engine's only if `packages/blip-core/` changed); move the
-      `CHANGELOG.md` **[Unreleased]** section under the new version heading.
-- [ ] `npm run typecheck && npm test && npm run build` green.
-- [ ] Merge to `main`, then `git tag vX.Y.Z && git push origin vX.Y.Z` **before** publishing —
-      otherwise electron-builder creates the tag itself, pointing at whatever `main` was.
-- [ ] `npm publish` the engine (if it changed).
-- [ ] `electron-builder --publish always` with signing creds + `GH_TOKEN`.
-- [ ] Verify the GitHub Release has installers + `latest.yml` / `latest-mac.yml` / `latest-linux.yml`.
-- [ ] Verify the release is **not a draft** — `gh release view vX.Y.Z --json isDraft,isPrerelease`
-      must return `{"isDraft":false,"isPrerelease":false}`. electron-updater cannot see a draft, so
-      a drafted release ships to nobody and looks exactly like "no update available".
-- [ ] Smoke-test auto-update from the previous version.
+- [ ] Versions bumped (`package.json`, and `packages/blip-core/package.json` if the engine
+      changed); `package-lock.json` matches; CHANGELOG section dated, committed on the release
+      branch and pushed.
+- [ ] Typecheck, unit tests and e2e green locally; CI green on the release PR.
+- [ ] `npm pack --dry-run` list read; `npm publish` of `radar-blip` (2FA) **before** the tag.
+- [ ] Annotated tag pushed **before** electron-builder.
+- [ ] `npm run package -- --publish always` with `GH_TOKEN`.
+- [ ] Release is not a draft; installer, blockmap and `latest.yml` attached; notes in.
+- [ ] Update from the previous version tested.
+- [ ] Merged into `main` with merge commits **after** the release; `main` holds the tag; CI green.
+- [ ] Own install upgraded, Inbox included.

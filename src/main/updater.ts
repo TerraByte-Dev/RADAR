@@ -1,7 +1,8 @@
-import { app } from 'electron'
+import { app, type BrowserWindow } from 'electron'
 import { appendFileSync, mkdirSync, statSync, truncateSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { AppUpdater } from 'electron-updater'
+import type { UpdateEvent } from '../shared/ipc'
 
 /** The shape `import('electron-updater')` actually produces — see `resolveAutoUpdater`. */
 type UpdaterModule = { autoUpdater?: AppUpdater; default?: { autoUpdater?: AppUpdater } }
@@ -61,4 +62,87 @@ export const updateLog = {
   warn: (m: unknown): void => write('warn', m),
   error: (m: unknown): void => write('error', m),
   debug: (m: unknown): void => write('debug', m)
+}
+
+/** What the routes `update.check` / `update.install` call. */
+export interface Updates {
+  check(): Promise<{ devMode: boolean }>
+  install(): void
+}
+
+/**
+ * Auto-update: a check that downloads what it finds (`autoDownload`), and an install, bridged to
+ * electron-updater's events on `update.event`. Packaged-only — in dev every check reports `devMode`.
+ * The updater is loaded lazily so dev never touches it.
+ */
+export function registerUpdates(getWindow: () => BrowserWindow | null): Updates {
+  if (!app.isPackaged) return { check: async () => ({ devMode: true }), install: () => {} }
+
+  const send = (event: UpdateEvent): void => {
+    const w = getWindow()
+    if (!w || w.isDestroyed()) return
+    w.webContents.send('update.event', event)
+  }
+
+  const updater = import('electron-updater').then((mod) => {
+    // NOT `.then(({ autoUpdater }) => …)` — that destructure is always `undefined`. See resolveAutoUpdater.
+    const autoUpdater = resolveAutoUpdater(mod)
+
+    autoUpdater.logger = updateLog
+    updateLog.info(`updater ready — RADAR ${app.getVersion()}, electron ${process.versions.electron}`)
+    // Download as soon as an update is found; `downloaded` lets the renderer offer "restart to update" (spec 8.7).
+    autoUpdater.autoDownload = true
+    autoUpdater.on('update-available', (info) => send({ type: 'available', version: info.version }))
+    autoUpdater.on('update-not-available', () => send({ type: 'not-available' }))
+    autoUpdater.on('download-progress', (p) => send({ type: 'progress', percent: Math.round(p.percent) }))
+    autoUpdater.on('update-downloaded', (info) => send({ type: 'downloaded', version: info.version }))
+    autoUpdater.on('error', (err) =>
+      send({ type: 'error', message: err instanceof Error ? err.message : String(err ?? 'unknown error') })
+    )
+    return autoUpdater
+  })
+
+  // Failing to load the updater at all is the one error electron-updater can never report itself
+  // (its `error` listeners are attached inside the callback that threw). Record it, and surface it.
+  const fail = (e: unknown): void => {
+    updateLog.error(e)
+    send({ type: 'error', message: e instanceof Error ? e.message : String(e ?? 'unknown error') })
+  }
+  updater.catch(fail)
+
+  // electron-updater has no working HTTP timeout under Electron: HttpExecutor.addTimeOutHandler
+  // hooks `request.on('socket')`, and electron's net.ClientRequest never emits `socket`. Combined
+  // with AppUpdater caching `checkForUpdatesPromise` until it settles, one stalled connection would
+  // wedge every later check for the life of the process — the same silent-spinner signature.
+  const CHECK_TIMEOUT_MS = 30_000
+  const bounded = <T>(p: Promise<T>): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('update check timed out')), CHECK_TIMEOUT_MS).unref?.()
+      )
+    ])
+
+  const updates: Updates = {
+    check: async () => {
+      try {
+        const autoUpdater = await updater
+        await bounded(autoUpdater.checkForUpdates())
+      } catch (e) {
+        fail(e)
+      }
+      return { devMode: false }
+    },
+    install: () => {
+      updater.then((autoUpdater) => autoUpdater.quitAndInstall()).catch(fail)
+    }
+  }
+
+  // Initial silent check on launch (replaces the old checkForUpdatesAndNotify()).
+  updater.then((autoUpdater) => bounded(autoUpdater.checkForUpdates())).catch(() => {
+    // Already reported: a load failure by `updater.catch(fail)` above, a check failure by
+    // electron-updater's own `error` event + logger. Nothing to add, but the chain needs a sink.
+  })
+
+  return updates
 }

@@ -10,6 +10,11 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts']
+    include: ['src/**/*.test.ts'],
+    // The main-process tests start the engine, git and node as processes, which start as slowly as
+    // the machine is busy: under a burner on every core the slowest test on the 5 s default took
+    // 12 s. Five times that; no assertion depends on it.
+    testTimeout: 60_000,
+    hookTimeout: 60_000
   }
 })
