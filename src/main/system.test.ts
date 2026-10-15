@@ -26,10 +26,12 @@ async function hostile(): Promise<{ dir: string; marker: string }> {
 }
 
 describe('open in editor (spec 8.6)', () => {
-  it('never resolves to anything in a project folder or a relative PATH entry', async () => {
+  // An absolute PATH entry is the owner's choice and is looked up like a shell would; an editor
+  // found inside the project being opened is refused by openInEditor (the test further down).
+  it('never resolves through a relative PATH entry, or to a bare code.cmd in a project folder', async () => {
     const { dir } = await hostile()
     expect(findEditor(['.', 'hostile', '.\\hostile', dir].join(';'), 'win32', {})).toBeNull()
-    expect(findEditor(['.', 'hostile', dir].join(':'), 'linux', {})?.exe ?? '').not.toContain(dir)
+    expect(findEditor(['.', 'hostile', './hostile'].join(':'), 'linux', {})).toBeNull()
   })
 
   it('on Windows, code.cmd on PATH means the installed Code.exe beside its bin folder; the .cmd never runs', () => {
