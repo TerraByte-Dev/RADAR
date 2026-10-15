@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import { open, readdir, rename, stat, unlink } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { access, open, readdir, rename, stat, unlink } from 'node:fs/promises';
 import { dirname, join, parse } from 'node:path';
 
 /** Transient Windows rename failures: antivirus, sync clients, or a watcher briefly holding the file. */
@@ -22,8 +23,14 @@ const tmpPrefix = (path: string): string => `.${parse(path).name}.`;
  * including a partial temp write (e.g. ENOSPC) — the temp file is removed so a failed
  * write never litters the repo. After a successful write, this file's stale temp orphans
  * from crashed runs are swept. Carried over from the v2 engine.
+ *
+ * A destination the owner made read-only is refused up front: a POSIX rename replaces it
+ * whatever its mode, so without this check only Windows would honour it.
  */
 export async function writeAtomic(path: string, data: string | Buffer): Promise<void> {
+  await access(path, constants.W_OK).catch((err: NodeJS.ErrnoException) => {
+    if (err.code !== 'ENOENT') throw err;
+  });
   const dir = dirname(path);
   const prefix = tmpPrefix(path);
   const tmp = join(dir, `${prefix}${randomBytes(6).toString('hex')}.tmp`);

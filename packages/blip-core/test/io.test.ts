@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync, utimesSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NOW, fixture } from './core/fixtures.js';
@@ -122,6 +122,23 @@ describe('writeAtomic — transient-failure durability', () => {
 
     expect(readFileSync(path, 'utf8')).toContain('Original'); // destination untouched
     expect(readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([]); // partial tmp removed
+  });
+
+  // root writes through any mode, so the check cannot hold there
+  it.skipIf(process.getuid?.() === 0)('refuses a read-only destination on every platform, without a rename or a temp file', async () => {
+    const dir = tmpProject();
+    const path = join(dir, 'BLIP.md');
+    writeFileSync(path, '---\nname: Original\n---\n', 'utf8');
+    chmodSync(path, 0o444);
+    renameControl.calls = 0;
+    try {
+      await expect(writeAtomic(path, doc('Doomed'))).rejects.toThrow(/EACCES|EPERM/);
+      expect(renameControl.calls).toBe(0);
+      expect(readFileSync(path, 'utf8')).toContain('Original');
+      expect(readdirSync(dir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+    } finally {
+      chmodSync(path, 0o644);
+    }
   });
 
   it('sweeps crash-orphaned .BLIP.*.tmp files older than an hour after a successful write', async () => {
