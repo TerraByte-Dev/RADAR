@@ -7,7 +7,7 @@ leaves the published engine where it is.
 
 ## [Unreleased]
 
-## [3.0.0] — unreleased
+## [3.0.0] — 2026-10-14
 
 App and `radar-blip` engine both move to 3.0.0.
 
